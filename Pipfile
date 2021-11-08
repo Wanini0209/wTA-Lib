@@ -1,0 +1,26 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+
+[dev-packages]
+flake8 = "*"
+pylint = "*"
+mypy = "*"
+isort = "*"
+pytest = "*"
+pytest-cov = "*"
+pre-commit = "*"
+commitizen = "*"
+invoke = "*"
+bandit = "*"
+mkdocs = "*"
+black = "*"
+
+[requires]
+python_version = "3.9"
+
+[pipenv]
+allow_prereleases = true

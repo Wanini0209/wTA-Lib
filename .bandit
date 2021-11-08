@@ -1,0 +1,3 @@
+[bandit]
+targets: wtalib
+exclude: tests
