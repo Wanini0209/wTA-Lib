@@ -10,3 +10,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **TimeIndex**, an immutalbe sequence of datetimes, used as index of time-indexing data.
+- **MaskedArray**, an array with masks indicating which elements ara N/A.
