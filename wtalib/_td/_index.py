@@ -56,42 +56,42 @@ class TimeIndex:
     Examples
     --------
     >>> dates = np.arange(3).astype('datetime64[D]')
-    >>> TimeIndex(dates).values
-    array(['1970-01-01', '1970-01-02', '1970-01-03'], dtype='datetime64[D]')
+    >>> TimeIndex(dates)
+    TimeIndex(['1970-01-01', '1970-01-02', '1970-01-03'], dtype='datetime64[D]')
 
     With `data` as a list of `datetime.date`:
 
     >>> dates = [datetime.date(1970, 1, 1), datetime.date(1970, 1, 2)]
-    >>> TimeIndex(dates).values
-    array(['1970-01-01', '1970-01-02'], dtype='datetime64[D]')
+    >>> TimeIndex(dates)
+    TimeIndex(['1970-01-01', '1970-01-02'], dtype='datetime64[D]')
 
     With `data` as an array of `datetimes.date`:
 
     >>> dates = [datetime.date(1970, 1, 1), datetime.date(1970, 1, 2)]
-    >>> TimeIndex(np.array(dates)).values
-    array(['1970-01-01', '1970-01-02'], dtype='datetime64[D]')
+    >>> TimeIndex(np.array(dates))
+    TimeIndex(['1970-01-01', '1970-01-02'], dtype='datetime64[D]')
 
     With `data` as a list of string representation of datetime:
 
     >>> dates = ['1970-01-01', '1970-01-02', '1970-01-03']
-    >>> TimeIndex(dates).values
-    array(['1970-01-01', '1970-01-02', '1970-01-03'], dtype='datetime64[D]')
+    >>> TimeIndex(dates)
+    TimeIndex(['1970-01-01', '1970-01-02', '1970-01-03'], dtype='datetime64[D]')
 
     With `data` as an array of string representation of datetime:
 
     >>> dates = ['1970-01-01', '1970-01-02', '1970-01-03']
-    >>> TimeIndex(np.array(dates)).values
-    array(['1970-01-01', '1970-01-02', '1970-01-03'], dtype='datetime64[D]')
+    >>> TimeIndex(np.array(dates))
+    TimeIndex(['1970-01-01', '1970-01-02', '1970-01-03'], dtype='datetime64[D]')
 
     Without setting `sort`:
     >>> dates = np.arange(3).astype('datetime64[D]')[::-1]
-    >>> TimeIndex(dates).values
-    array(['1970-01-01', '1970-01-02', '1970-01-03'], dtype='datetime64[D]')
+    >>> TimeIndex(dates)
+    TimeIndex(['1970-01-01', '1970-01-02', '1970-01-03'], dtype='datetime64[D]')
 
     With `sort = False`:
     >>> dates = np.arange(3).astype('datetime64[D]')[::-1]
-    >>> TimeIndex(dates, sort=False).values
-    array(['1970-01-03', '1970-01-02', '1970-01-01'], dtype='datetime64[D]')
+    >>> TimeIndex(dates, sort=False)
+    TimeIndex(['1970-01-03', '1970-01-02', '1970-01-01'], dtype='datetime64[D]')
 
     """
     def __init__(self, data: ArrayLike, sort: bool = True):
@@ -107,6 +107,12 @@ class TimeIndex:
         Returns
         -------
         numpy.ndarray
+
+        Examples
+        --------
+        >>> dates = np.arange(3).astype('datetime64[D]')
+        >>> TimeIndex(dates).values
+        array(['1970-01-01', '1970-01-02', '1970-01-03'], dtype='datetime64[D]')
 
         """
         return self._values.copy()
@@ -157,6 +163,7 @@ class TimeIndex:
         False
 
         Non-TimeIndex:
+
         >>> TimeIndex(dates).equals(dates)
         False
 
@@ -219,22 +226,22 @@ class TimeIndex:
         --------
         >>> dates = np.arange(5).astype('datetime64[D]')
         >>> tindex = TimeIndex(dates)
-        >>> tindex.values
-        array(['1970-01-01', '1970-01-02', '1970-01-03', '1970-01-04',
-               '1970-01-05'], dtype='datetime64[D]')
+        >>> tindex
+        TimeIndex(['1970-01-01', '1970-01-02', '1970-01-03', '1970-01-04',
+                   '1970-01-05'], dtype='datetime64[D]')
 
         1. supscript with slice:
 
-        >>> tindex[1:].values
-        array(['1970-01-02', '1970-01-03', '1970-01-04', '1970-01-05'],
-              dtype='datetime64[D]')
-        >>> tindex[:-1].values
-        array(['1970-01-01', '1970-01-02', '1970-01-03', '1970-01-04'],
-              dtype='datetime64[D]')
-        >>> tindex[1:-1].values
-        array(['1970-01-02', '1970-01-03', '1970-01-04'], dtype='datetime64[D]')
-        >>> tindex[::2].values
-        array(['1970-01-01', '1970-01-03', '1970-01-05'], dtype='datetime64[D]')
+        >>> tindex[1:]
+        TimeIndex(['1970-01-02', '1970-01-03', '1970-01-04', '1970-01-05'],
+                  dtype='datetime64[D]')
+        >>> tindex[:-1]
+        TimeIndex(['1970-01-01', '1970-01-02', '1970-01-03', '1970-01-04'],
+                  dtype='datetime64[D]')
+        >>> tindex[1:-1]
+        TimeIndex(['1970-01-02', '1970-01-03', '1970-01-04'], dtype='datetime64[D]')
+        >>> tindex[::2]
+        TimeIndex(['1970-01-01', '1970-01-03', '1970-01-05'], dtype='datetime64[D]')
 
         2a. supscript with integer:
 
@@ -248,22 +255,22 @@ class TimeIndex:
 
         3a. supscript with integer array:
 
-        >>> tindex[np.array([1, 3])].values
-        array(['1970-01-02', '1970-01-04'], dtype='datetime64[D]')
+        >>> tindex[np.array([1, 3])]
+        TimeIndex(['1970-01-02', '1970-01-04'], dtype='datetime64[D]')
 
         3b. supscript with integer array(raise out-of-range):
 
-        >>> tindex[np.array([1, 3, 5])].values
+        >>> tindex[np.array([1, 3, 5])]
         IndexError: index 5 is out of bounds for axis 0 with size 5
 
         4a. supscript with boolean array(same length):
 
-        >>> tindex[np.arange(5) % 2 == 0].values
-        array(['1970-01-01', '1970-01-03', '1970-01-05'], dtype='datetime64[D]')
+        >>> tindex[np.arange(5) % 2 == 0]
+        TimeIndex(['1970-01-01', '1970-01-03', '1970-01-05'], dtype='datetime64[D]')
 
         4b. supscript with boolean array(different length):
 
-        >>> tindex[np.arange(6) % 2 == 0].values
+        >>> tindex[np.arange(6) % 2 == 0]
         IndexError: boolean index did not match indexed array along dimension 0;
         dimension is 5 but corresponding boolean dimension is 6
 
@@ -274,3 +281,17 @@ class TimeIndex:
             return TimeIndex(values, sort=False)
         # return a datetime
         return values.tolist()
+
+    def __repr__(self) -> str:
+        """String representation for the time-index.
+
+        See Also
+        --------
+        numpy.ndarray
+
+        """
+        ret = repr(self._values)
+        ret = ret.replace('array', 'TimeIndex')
+        # fix indentation for the difference between 'array' and 'TimeIndex'
+        ret = ret.replace('\n', '\n    ')
+        return ret
