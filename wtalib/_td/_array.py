@@ -6,14 +6,45 @@ of time-indexing data in current package.
 
 """
 
-from typing import Any, Optional, Tuple, Union
+from enum import Enum
+from typing import Any, Callable, NamedTuple, Optional, Tuple, Union
 
 import numpy as np
 from numpy.typing import ArrayLike
 
+_MaskedArrayLike = Union[ArrayLike, 'MaskedArray']
+
+
+class Operator(NamedTuple):
+    """Operation Definitions."""
+    name: str
+    symbol: str
+    func: Callable
+
+
+class LogicalUnaryOperator(Operator, Enum):
+    """Logical unary operator."""
+    NOT = Operator('Logical NOT', '~', lambda x: ~x)
+
+
+class LogicalBinaryOperator(Operator, Enum):
+    """Logical binary operator."""
+    AND = Operator('Logical AND', '&', lambda x, y: x & y)
+    OR = Operator('Logical OR', '|', lambda x, y: x | y)
+    XOR = Operator('Logical Exclusive-OR', '^', lambda x, y: x ^ y)
+
 
 class MaskedArray:
     """An array with masks indicating which elements are N/A.
+
+    Like NumPy's array, `MaskedArray` supports operators as follows:
+    1. Logical operators: NOT(~), AND(&), OR(|), XOR(^).
+
+    The second operand of binary operators could be scalar, array-like or
+    `MaskedArray`, and the shapes of two operands must be broadcastable.
+    No matter unary or binary operator, the data-type of operand(s) must be
+    supported for the operator. For example, the logical operators only support
+    boolean data and arithemic operators only support numeric data.
 
     Parameters
     ----------
@@ -699,3 +730,70 @@ class MaskedArray:
         data = self._data.astype(object)
         data[self._masks] = np.nan
         return repr(data).replace('dtype=object', f'dtype={self.dtype}')
+
+    def _broadcast_to(self, shape: Tuple[int, ...]) -> 'MaskedArray':
+        data = np.broadcast_to(self._data, shape)
+        masks = self._masks
+        if masks is not None:
+            masks = np.broadcast_to(masks, shape)
+        return MaskedArray(data, masks)
+
+    def _unary_op(self, func: Callable[[np.ndarray, ], np.ndarray]
+                  ) -> 'MaskedArray':
+        return MaskedArray(func(self._data), self._masks)
+
+    def _binary_op(self, other: _MaskedArrayLike,
+                   func: Callable[[np.ndarray, np.ndarray], np.ndarray]
+                   ) -> 'MaskedArray':
+        if not isinstance(other, MaskedArray):
+            # Case 1: `other` is not a `MaskedArray`
+            other = MaskedArray(np.asarray(other))
+            return self._binary_op(other, func)
+        # pylint: disable=protected-access
+        if self.ndim < other.ndim:
+            # Case 2: `other` is a `MaskedArray` with larger dimension
+            return self._broadcast_to(other.shape)._binary_op(other, func)
+        if other.ndim < self.ndim:
+            # Case 3: `other` is a `MaskedArray` with less dimension
+            return self._binary_op(other._broadcast_to(self.shape), func)
+        # Case end: self and other are two `MaskedArray` with same shape
+        masks = self._masks
+        if other._masks is not None and other._masks.any():
+            if masks is None or not masks.any():
+                masks = other._masks
+            else:
+                masks = masks | other._masks
+        data = func(self._data, other._data)
+        # pylint: enable=protected-access
+        return MaskedArray(data, masks)
+
+    def _logical_unary_op(self, operator: LogicalUnaryOperator
+                          ) -> 'MaskedArray':
+        if not np.issubdtype(self.dtype, bool):
+            raise ValueError("unsupported operand dtype for %s: '%s'"
+                             % (operator.symbol, self.dtype))
+        return self._unary_op(operator.func)
+
+    def _logical_binary_op(self, other: _MaskedArrayLike,
+                           operator: LogicalBinaryOperator) -> 'MaskedArray':
+        dtype1 = self.dtype
+        if isinstance(other, MaskedArray):
+            dtype2 = other.dtype
+        else:
+            dtype2 = np.asarray(other).dtype
+        if not(np.issubdtype(dtype1, bool) and np.issubdtype(dtype2, bool)):
+            raise ValueError("unsupported operand dtype(s) for %s: '%s' and '%s'"
+                             % (operator.symbol, dtype1, dtype2))
+        return self._binary_op(other, operator.func)
+
+    def __invert__(self) -> 'MaskedArray':
+        return self._logical_unary_op(LogicalUnaryOperator.NOT)
+
+    def __and__(self, other: _MaskedArrayLike) -> 'MaskedArray':
+        return self._logical_binary_op(other, LogicalBinaryOperator.AND)
+
+    def __or__(self, other: _MaskedArrayLike) -> 'MaskedArray':
+        return self._logical_binary_op(other, LogicalBinaryOperator.OR)
+
+    def __xor__(self, other: _MaskedArrayLike) -> 'MaskedArray':
+        return self._logical_binary_op(other, LogicalBinaryOperator.XOR)
