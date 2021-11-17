@@ -34,6 +34,37 @@ class LogicalBinaryOperator(Operator, Enum):
     XOR = Operator('Logical Exclusive-OR', '^', lambda x, y: x ^ y)
 
 
+def array_equal(target: np.ndarray, reference: np.ndarray) -> bool:
+    """Determine if two array are equal.
+
+    Two array are equal, it means they have
+    1. the same shape,
+    2. the same dtype, and
+    3. the same elements.
+
+    Notes
+    -----
+    `numpy.array_equal` support to compare two numeric arrays with `np.nan` by
+    setting the `equal_nan` argument as ``True``. However, if the one of the
+    arrays is not numeric, it would raise `TypeError`.
+
+    """
+    if target.dtype != reference.dtype:
+        return False
+    if target.shape != reference.shape:
+        return False
+    if not np.issubdtype(target.dtype, object):
+        return np.array_equal(target, reference, equal_nan=True)
+    # NumPy's `array_equal` method would raise an exception if
+    # `dtype` of arrays is ``object`` and `equal_nan` is ``True``.
+    # In this case, it should compare arrays element by element.
+    for tar, ref in zip(target.flatten(), reference.flatten()):
+        if (np.isnan(tar) and np.isnan(ref)) or (tar == ref):
+            continue
+        return False
+    return True
+
+
 class MaskedArray:
     """An array with masks indicating which elements are N/A.
 
@@ -422,20 +453,13 @@ class MaskedArray:
         >>> target.equals(MaskedArray(data_r, masks))
         True
 
+        5. compare to another object not a masked-array:
+
+        >>> data = np.array([1, 2, 3])
+        >>> MaskedArray(data).equals(data)
+        False
+
         """
-        def array_equal(tar: np.ndarray, ref: np.ndarray) -> bool:
-            """Determine if two array are equal.
-
-            Two array are equal, it means they have
-            1. the same shape,
-            2. the same dtype, and
-            3. the same elements.
-
-            """
-            if tar.dtype == ref.dtype:
-                return np.array_equal(tar, ref)
-            return False
-
         if isinstance(other, MaskedArray):
             # pylint: disable=protected-access
             # Case1: Either `self` or `other` contains no N/A element.
@@ -454,6 +478,7 @@ class MaskedArray:
                                  other._data[~other._masks])  # type: ignore
             # pylint: enable=invalid-unary-operand-type, protected-access
             return cond_1 and cond_2
+        return False
 
     def fillna(self, value: Any) -> 'MaskedArray':
         """Fill N/A elements using the given value.

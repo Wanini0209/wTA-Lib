@@ -3,40 +3,9 @@
 
 import numpy as np
 
-from .._context import MaskedArray
+from .._context import MaskedArray, array_equal
 
 # pylint: disable=no-self-use, too-few-public-methods
-
-
-def array_equal(target: np.ndarray, reference: np.ndarray) -> bool:
-    """Determine if two array are equal.
-
-    Two array are equal, it means they have
-    1. the same shape,
-    2. the same dtype, and
-    3. the same elements.
-
-    Notes
-    -----
-    `numpy.array_equal` support to compare two numeric arrays with `np.nan` by
-    setting the `equal_nan` argument as ``True``. However, if the one of the
-    arrays is not numeric, it would raise `TypeError`.
-
-    """
-    if target.dtype == reference.dtype:
-        try:
-            return np.array_equal(target, reference, equal_nan=True)
-        except TypeError:
-            # NumPy's `array_equal` method would raise an exception if
-            # `dtype` of arrays is ``object`` and `equal_nan` is ``True``.
-            # In this case, it should compare arrays element by element.
-            if target.shape == reference.shape:
-                for tar, ref in zip(target.flatten(), reference.flatten()):
-                    if (np.isnan(tar) and np.isnan(ref)) or (tar == ref):
-                        continue
-                    return False
-                return True
-    return False
 
 
 class TestMaskedArray:
@@ -411,6 +380,12 @@ class TestEquals:
         cond_1 = not target.equals(reference)
         cond_2 = not reference.equals(target)
         assert cond_1 and cond_2
+
+    def test_on_non_masked_array_object(self):
+        """Should return ``False``."""
+        data = np.array([1, 2, 3, 4])
+        target = MaskedArray(data)
+        assert not target.equals(data)
 
 
 class TestFillNa:

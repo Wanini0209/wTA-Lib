@@ -12,6 +12,7 @@ from wtalib._td._array import (  # noqa: E402, F401
     LogicalBinaryOperator,
     LogicalUnaryOperator,
     MaskedArray,
+    array_equal,
 )
 from wtalib._td._index import TimeIndex  # noqa: E402, F401
 from wtalib._td._series import BooleanTimeSeries, TimeSeries  # noqa: E402, F401
