@@ -5,11 +5,12 @@ This module provides the base of time-series and its derivatives.
 
 Classes
 -------
+BooleanTimeSeries : A time-series of boolean data.
 TimeSeries : A sequence of data points indexed by time.
 
 """
 
-from typing import Any, Union
+from typing import Any, Callable, Union
 
 import numpy as np
 import pandas as pd
@@ -692,4 +693,79 @@ class TimeSeries:
         ret = '\n'.join([f'{d}\t{v}'
                          for d, v in zip(self._index, self._data)])  # type: ignore
         ret = f'{ret}\nName: {self._name}, dtype: {self._data.dtype}'
+        return ret
+
+
+class BooleanTimeSeries(TimeSeries):
+    """Time-series of boolean data.
+
+    Support logical operations as follows:
+    - Unary : NOT(~)
+    - Binary : AND(&), OR(|), XOR(^).
+
+    While NOT operates on one `BooleanTimeSeries`, AND, OR, and XOR operate on
+    two `BooleanTimeSeries` which have the equivalent index. These opertaions
+    return a `BooleanTimeSeries`. Equal(==) and Not-equal(!=) operations are
+    not supported, because they can be realized simply by logical operations.
+    For example, `x == y` is equivalent to `x ^ ~y` and `x != y` is equivalent
+    to `x ^ y`. To support a binary logical operator between a
+    `BooleanTimeSeries` and a boolean scalar is unnecessary, because its
+    result are always trivial. For example, let ``bts`` is an arbitrary
+    `BooleanTimeSeries`, then `bts & True` is equal to `bts` and `bts & False`
+    is equal to a `BooleanTimeSeries` with only ``False``.
+
+    See Also
+    --------
+    TimeSeries.
+
+    """
+    def __init__(self, data: _MaskedArrayLike, index: _TimeIndexLike,
+                 name: str, sort: bool = True):
+        super().__init__(data, index, name, sort)
+        if not np.issubdtype(self.dtype, np.bool_):
+            raise ValueError("non-boolean values in 'data'")
+
+    def __invert__(self) -> 'BooleanTimeSeries':
+        data = ~self._data
+        index = self._index
+        name = f'~{self._name}'
+        # `_make` is a classmethod inherited from `TimeSeries`, but `mypy`
+        # would occur a wrong waring here.
+        # So, ignore `mypy`for wrong warning below.
+        return self._make(data, index, name)  # type: ignore
+
+    def _logical_op(self, other: 'BooleanTimeSeries',
+                    symbol: 'str',
+                    func: Callable[[MaskedArray, MaskedArray], MaskedArray]
+                    ) -> 'BooleanTimeSeries':
+        if not isinstance(other, BooleanTimeSeries):
+            raise TypeError("unsupported operand type(s) for %s: '%s' and '%s'"
+                            % (symbol, 'BooleanTimeSeries',
+                               other.__class__.__name__))
+        # pylint: disable=protected-access
+        if not self._index.equals(other._index):
+            raise ValueError("inconsistent index")
+        data = func(self._data, other._data)
+        index = self._index
+        name = f'{self._name} {symbol} {other._name}'
+        # pylint: enable=protected-access
+
+        # `_make` is a classmethod inherited from `TimeSeries`, but `mypy`
+        # would occur a wrong waring here.
+        # So, ignore `mypy`for wrong warning below.
+        return self._make(data, index, name)  # type: ignore
+
+    def __and__(self, other: 'BooleanTimeSeries') -> 'BooleanTimeSeries':
+        ret = self._logical_op(other, symbol='&',
+                               func=lambda x, y: x & y)
+        return ret
+
+    def __or__(self, other: 'BooleanTimeSeries') -> 'BooleanTimeSeries':
+        ret = self._logical_op(other, symbol='|',
+                               func=lambda x, y: x | y)
+        return ret
+
+    def __xor__(self, other: 'BooleanTimeSeries') -> 'BooleanTimeSeries':
+        ret = self._logical_op(other, symbol='^',
+                               func=lambda x, y: x ^ y)
         return ret
