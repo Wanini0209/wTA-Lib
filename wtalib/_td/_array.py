@@ -34,17 +34,47 @@ class LogicalBinaryOperator(Operator, Enum):
     XOR = Operator('Logical Exclusive-OR', '^', lambda x, y: x ^ y)
 
 
+class ArithmeticUnaryOperator(Operator, Enum):
+    """Arithmetic unary operator."""
+    NEG = Operator('Negative', '-', lambda x: -x)
+
+
+class ArithmeticUnaryFunction(Operator, Enum):
+    """Arithmetic unary function."""
+    ABS = Operator('Absolute value', 'abs', abs)
+
+
+ArithmeticUnaryOperation = Union[ArithmeticUnaryOperator,
+                                 ArithmeticUnaryFunction]
+
+
+class ArithmeticBinaryOperator(Operator, Enum):
+    """Arithmetic binary operator."""
+    ADD = Operator('Arithmetic Addition', '+', lambda x, y: x + y)
+    SUB = Operator('Arithmetic Subtraction', '-', lambda x, y: x - y)
+    MUL = Operator('Arithmetic Multiplication', '*', lambda x, y: x * y)
+    DIV = Operator('Arithmetic Division', '/', lambda x, y: x / y)
+    MOD = Operator('Arithmetic Modulus', '%', lambda x, y: x % y)
+    POW = Operator('Arithmetic Power', '**', lambda x, y: x ** y)
+    FDIV = Operator('Arithmetic Floor-division', '//', lambda x, y: x // y)
+
+
 class MaskedArray:
     """An array with masks indicating which elements are N/A.
 
     Like NumPy's array, `MaskedArray` supports operators as follows:
-    1. Logical operators: NOT(~), AND(&), OR(|), XOR(^).
+    1. Logical operators:
+        NOT(~), AND(&), OR(|), XOR(^).
+    2. Arithmetic Operators:
+        Negative(-), Absolute value(abs), Addition(+), Subtraction(-),
+        Multiplication(*), Division(/), Modulus(%), Power(**),
+        Floor division(//).
 
     The second operand of binary operators could be scalar, array-like or
     `MaskedArray`, and the shapes of two operands must be broadcastable.
     No matter unary or binary operator, the data-type of operand(s) must be
     supported for the operator. For example, the logical operators only support
-    boolean data and arithemic operators only support numeric data.
+    boolean data and arithmetic operators only support numeric data.
 
     Parameters
     ----------
@@ -433,7 +463,7 @@ class MaskedArray:
 
             """
             if tar.dtype == ref.dtype:
-                return np.array_equal(tar, ref)
+                return np.array_equal(tar, ref, equal_nan=True)
             return False
 
         if isinstance(other, MaskedArray):
@@ -797,3 +827,50 @@ class MaskedArray:
 
     def __xor__(self, other: _MaskedArrayLike) -> 'MaskedArray':
         return self._logical_binary_op(other, LogicalBinaryOperator.XOR)
+
+    def _arithmetic_unary_op(self, operator: ArithmeticUnaryOperation
+                             ) -> 'MaskedArray':
+        if not np.issubdtype(self.dtype, np.number):
+            raise ValueError("unsupported operand dtype for %s: '%s'"
+                             % (operator.symbol, self.dtype))
+        return self._unary_op(operator.func)
+
+    def _arithmetic_binary_op(self, other: _MaskedArrayLike,
+                              operator: ArithmeticBinaryOperator
+                              ) -> 'MaskedArray':
+        dtype1 = self.dtype
+        if isinstance(other, MaskedArray):
+            dtype2 = other.dtype
+        else:
+            dtype2 = np.asarray(other).dtype
+        if not(np.issubdtype(dtype1, np.number) and np.issubdtype(dtype2, np.number)):
+            raise ValueError("unsupported operand dtype(s) for %s: '%s' and '%s'"
+                             % (operator.symbol, dtype1, dtype2))
+        return self._binary_op(other, operator.func)
+
+    def __neg__(self) -> 'MaskedArray':
+        return self._arithmetic_unary_op(ArithmeticUnaryOperator.NEG)
+
+    def __abs__(self) -> 'MaskedArray':
+        return self._arithmetic_unary_op(ArithmeticUnaryFunction.ABS)
+
+    def __add__(self, other: _MaskedArrayLike) -> 'MaskedArray':
+        return self._arithmetic_binary_op(other, ArithmeticBinaryOperator.ADD)
+
+    def __sub__(self, other: _MaskedArrayLike) -> 'MaskedArray':
+        return self._arithmetic_binary_op(other, ArithmeticBinaryOperator.SUB)
+
+    def __mul__(self, other: _MaskedArrayLike) -> 'MaskedArray':
+        return self._arithmetic_binary_op(other, ArithmeticBinaryOperator.MUL)
+
+    def __truediv__(self, other: _MaskedArrayLike) -> 'MaskedArray':
+        return self._arithmetic_binary_op(other, ArithmeticBinaryOperator.DIV)
+
+    def __floordiv__(self, other: _MaskedArrayLike) -> 'MaskedArray':
+        return self._arithmetic_binary_op(other, ArithmeticBinaryOperator.FDIV)
+
+    def __mod__(self, other: _MaskedArrayLike) -> 'MaskedArray':
+        return self._arithmetic_binary_op(other, ArithmeticBinaryOperator.MOD)
+
+    def __pow__(self, other: _MaskedArrayLike) -> 'MaskedArray':
+        return self._arithmetic_binary_op(other, ArithmeticBinaryOperator.POW)

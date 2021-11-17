@@ -9,6 +9,9 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__),
 
 # pylint: disable=wrong-import-position, unused-import, wrong-import-order
 from wtalib._td._array import (  # noqa: E402, F401
+    ArithmeticBinaryOperator,
+    ArithmeticUnaryFunction,
+    ArithmeticUnaryOperator,
     LogicalBinaryOperator,
     LogicalUnaryOperator,
     MaskedArray,
