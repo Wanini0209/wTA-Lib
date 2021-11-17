@@ -12,6 +12,7 @@ from wtalib._td._array import (  # noqa: E402, F401
     ArithmeticBinaryOperator,
     ArithmeticUnaryFunction,
     ArithmeticUnaryOperator,
+    ComparisonOperator,
     LogicalBinaryOperator,
     LogicalUnaryOperator,
     MaskedArray,

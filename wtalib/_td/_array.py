@@ -59,6 +59,19 @@ class ArithmeticBinaryOperator(Operator, Enum):
     FDIV = Operator('Arithmetic Floor-division', '//', lambda x, y: x // y)
 
 
+class ComparisonOperator(Operator, Enum):
+    """Comparison (binary) operator."""
+    EQ = Operator('Equal', '==', lambda x, y: x == y)
+    NE = Operator('Not equal', '!=', lambda x, y: x != y)
+    GT = Operator('Greater than', '>', lambda x, y: x > y)
+    LT = Operator('Less than', '<', lambda x, y: x < y)
+    GE = Operator('Greater than or equal to', '>=', lambda x, y: x >= y)
+    LE = Operator('Less than or equal to', '<=', lambda x, y: x <= y)
+
+
+NumericBinaryOperator = Union[ArithmeticBinaryOperator, ComparisonOperator]
+
+
 class MaskedArray:
     """An array with masks indicating which elements are N/A.
 
@@ -69,6 +82,9 @@ class MaskedArray:
         Negative(-), Absolute value(abs), Addition(+), Subtraction(-),
         Multiplication(*), Division(/), Modulus(%), Power(**),
         Floor division(//).
+    3. Comparison operators:
+        Equal(==), Not equal(!=), Greater than(>), Less than(<),
+        Greater than or equal to(>=), Less than or equal to(<=).
 
     The second operand of binary operators could be scalar, array-like or
     `MaskedArray`, and the shapes of two operands must be broadcastable.
@@ -787,6 +803,9 @@ class MaskedArray:
             # Case 3: `other` is a `MaskedArray` with less dimension
             return self._binary_op(other._broadcast_to(self.shape), func)
         # Case end: self and other are two `MaskedArray` with same shape
+        if self.shape != other.shape:
+            raise ValueError("operands could not be broadcast together with "
+                             f"shapes {self.shape} {other.shape}")
         masks = self._masks
         if other._masks is not None and other._masks.any():
             if masks is None or not masks.any():
@@ -835,9 +854,9 @@ class MaskedArray:
                              % (operator.symbol, self.dtype))
         return self._unary_op(operator.func)
 
-    def _arithmetic_binary_op(self, other: _MaskedArrayLike,
-                              operator: ArithmeticBinaryOperator
-                              ) -> 'MaskedArray':
+    def _numeric_binary_op(self, other: _MaskedArrayLike,
+                           operator: NumericBinaryOperator
+                           ) -> 'MaskedArray':
         dtype1 = self.dtype
         if isinstance(other, MaskedArray):
             dtype2 = other.dtype
@@ -855,22 +874,43 @@ class MaskedArray:
         return self._arithmetic_unary_op(ArithmeticUnaryFunction.ABS)
 
     def __add__(self, other: _MaskedArrayLike) -> 'MaskedArray':
-        return self._arithmetic_binary_op(other, ArithmeticBinaryOperator.ADD)
+        return self._numeric_binary_op(other, ArithmeticBinaryOperator.ADD)
 
     def __sub__(self, other: _MaskedArrayLike) -> 'MaskedArray':
-        return self._arithmetic_binary_op(other, ArithmeticBinaryOperator.SUB)
+        return self._numeric_binary_op(other, ArithmeticBinaryOperator.SUB)
 
     def __mul__(self, other: _MaskedArrayLike) -> 'MaskedArray':
-        return self._arithmetic_binary_op(other, ArithmeticBinaryOperator.MUL)
+        return self._numeric_binary_op(other, ArithmeticBinaryOperator.MUL)
 
     def __truediv__(self, other: _MaskedArrayLike) -> 'MaskedArray':
-        return self._arithmetic_binary_op(other, ArithmeticBinaryOperator.DIV)
+        return self._numeric_binary_op(other, ArithmeticBinaryOperator.DIV)
 
     def __floordiv__(self, other: _MaskedArrayLike) -> 'MaskedArray':
-        return self._arithmetic_binary_op(other, ArithmeticBinaryOperator.FDIV)
+        return self._numeric_binary_op(other, ArithmeticBinaryOperator.FDIV)
 
     def __mod__(self, other: _MaskedArrayLike) -> 'MaskedArray':
-        return self._arithmetic_binary_op(other, ArithmeticBinaryOperator.MOD)
+        return self._numeric_binary_op(other, ArithmeticBinaryOperator.MOD)
 
     def __pow__(self, other: _MaskedArrayLike) -> 'MaskedArray':
-        return self._arithmetic_binary_op(other, ArithmeticBinaryOperator.POW)
+        return self._numeric_binary_op(other, ArithmeticBinaryOperator.POW)
+
+    # When overriding `__eq__` and `__ne__` methods with specified object and
+    # return non-boolean, `mypy` would raise a 'incompatible-override' waring.
+    # So we ignore `mypy` above.
+    def __eq__(self, other: _MaskedArrayLike) -> 'MaskedArray':  # type: ignore
+        return self._numeric_binary_op(other, ComparisonOperator.EQ)
+
+    def __ne__(self, other: _MaskedArrayLike) -> 'MaskedArray':  # type: ignore
+        return self._numeric_binary_op(other, ComparisonOperator.NE)
+
+    def __gt__(self, other: _MaskedArrayLike) -> 'MaskedArray':
+        return self._numeric_binary_op(other, ComparisonOperator.GT)
+
+    def __lt__(self, other: _MaskedArrayLike) -> 'MaskedArray':
+        return self._numeric_binary_op(other, ComparisonOperator.LT)
+
+    def __ge__(self, other: _MaskedArrayLike) -> 'MaskedArray':
+        return self._numeric_binary_op(other, ComparisonOperator.GE)
+
+    def __le__(self, other: _MaskedArrayLike) -> 'MaskedArray':
+        return self._numeric_binary_op(other, ComparisonOperator.LE)
