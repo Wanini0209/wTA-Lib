@@ -847,6 +847,15 @@ class MaskedArray:
                 masks = masks | other._masks
         data = func(self._data, other._data)
         # pylint: enable=protected-access
+
+        # deal with `np.nan`
+        if np.issubdtype(data.dtype, float):
+            isnan = np.isnan(data)
+            if isnan.any():
+                if masks is None:
+                    masks = isnan
+                else:
+                    masks = masks | isnan
         return MaskedArray(data, masks)
 
     def _logical_unary_op(self, operator: LogicalUnaryOperator

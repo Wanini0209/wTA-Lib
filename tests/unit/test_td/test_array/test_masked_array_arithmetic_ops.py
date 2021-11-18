@@ -219,7 +219,12 @@ class TestArithmeticBinaryOperatorsExceptPower:
 
         """
         result = operator.func(operand_1, operand_2)
-        answer = MaskedArray(operator.func(array_1, array_2), masks)
+        answer = operator.func(array_1, array_2)
+        if masks is None:
+            masks = np.isnan(answer)
+        else:
+            masks = np.array(masks) | np.isnan(answer)
+        answer = MaskedArray(answer, masks)
         assert result.equals(answer)
 
 
@@ -253,7 +258,12 @@ class TestArithmeticPowerOperator:
 
         """
         result = operand_1 ** operand_2
-        answer = MaskedArray(array_1 ** array_2, masks)
+        answer = array_1 ** array_2
+        if masks is None:
+            masks = np.isnan(answer)
+        else:
+            masks = np.array(masks) | np.isnan(answer)
+        answer = MaskedArray(answer, masks)
         assert result.equals(answer)
 
     @pytest.mark.parametrize('operand_1, operand_2',
