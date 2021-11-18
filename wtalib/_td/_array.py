@@ -65,17 +65,63 @@ def array_equal(target: np.ndarray, reference: np.ndarray) -> bool:
     return True
 
 
+class ArithmeticUnaryOperator(Operator, Enum):
+    """Arithmetic unary operator."""
+    NEG = Operator('Negative', '-', lambda x: -x)
+
+
+class ArithmeticUnaryFunction(Operator, Enum):
+    """Arithmetic unary function."""
+    ABS = Operator('Absolute value', 'abs', abs)
+
+
+ArithmeticUnaryOperation = Union[ArithmeticUnaryOperator,
+                                 ArithmeticUnaryFunction]
+
+
+class ArithmeticBinaryOperator(Operator, Enum):
+    """Arithmetic binary operator."""
+    ADD = Operator('Arithmetic Addition', '+', lambda x, y: x + y)
+    SUB = Operator('Arithmetic Subtraction', '-', lambda x, y: x - y)
+    MUL = Operator('Arithmetic Multiplication', '*', lambda x, y: x * y)
+    DIV = Operator('Arithmetic Division', '/', lambda x, y: x / y)
+    MOD = Operator('Arithmetic Modulus', '%', lambda x, y: x % y)
+    POW = Operator('Arithmetic Power', '**', lambda x, y: x ** y)
+    FDIV = Operator('Arithmetic Floor-division', '//', lambda x, y: x // y)
+
+
+class ComparisonOperator(Operator, Enum):
+    """Comparison (binary) operator."""
+    EQ = Operator('Equal', '==', lambda x, y: x == y)
+    NE = Operator('Not equal', '!=', lambda x, y: x != y)
+    GT = Operator('Greater than', '>', lambda x, y: x > y)
+    LT = Operator('Less than', '<', lambda x, y: x < y)
+    GE = Operator('Greater than or equal to', '>=', lambda x, y: x >= y)
+    LE = Operator('Less than or equal to', '<=', lambda x, y: x <= y)
+
+
+NumericBinaryOperator = Union[ArithmeticBinaryOperator, ComparisonOperator]
+
+
 class MaskedArray:
     """An array with masks indicating which elements are N/A.
 
     Like NumPy's array, `MaskedArray` supports operators as follows:
-    1. Logical operators: NOT(~), AND(&), OR(|), XOR(^).
+    1. Logical operators:
+        NOT(~), AND(&), OR(|), XOR(^).
+    2. Arithmetic Operators:
+        Negative(-), Absolute value(abs), Addition(+), Subtraction(-),
+        Multiplication(*), Division(/), Modulus(%), Power(**),
+        Floor division(//).
+    3. Comparison operators:
+        Equal(==), Not equal(!=), Greater than(>), Less than(<),
+        Greater than or equal to(>=), Less than or equal to(<=).
 
     The second operand of binary operators could be scalar, array-like or
     `MaskedArray`, and the shapes of two operands must be broadcastable.
     No matter unary or binary operator, the data-type of operand(s) must be
     supported for the operator. For example, the logical operators only support
-    boolean data and arithemic operators only support numeric data.
+    boolean data and arithmetic operators only support numeric data.
 
     Parameters
     ----------
@@ -113,6 +159,8 @@ class MaskedArray:
 
     Methods
     ----------
+    astype : MaskedArray
+        Return a copy of the masked-array casting to a specified type.
     isna : numpy.ndarray
         Return a same-sized boolean array indicating if the elements in the
         masked-array are N/A.
@@ -311,6 +359,37 @@ class MaskedArray:
 
         """
         return len(self._data)
+
+    def astype(self, dtype: Union[str, type, np.dtype]) -> 'MaskedArray':
+        """Copy of the masked-array, cast to a specified data-type.
+
+        Return a copy of the masked-array casting to a `dtype`.
+
+        Parameters
+        ----------
+        dtype : str or dtype
+            Typecode or data-type to which the masked-array is cast.
+
+        Returns
+        -------
+        MaskedArray
+
+        See Also
+        --------
+        numpy.ndarray.astype
+
+        Examples
+        --------
+        >>> MaskedArray([1, 2, 3]).astype(float)
+        array([1., 2., 3.], dtype=float64)
+
+        Down-casting:
+        >>> MaskedArray([-1.75, -1.5, -1.25, -0.5, 0,
+                         0.5, 1.25, 1.5, 1.75]).astype(int)
+        array([-1, -1, -1,  0,  0,  0,  1,  1,  1], dtype=int32)
+
+        """
+        return MaskedArray(self._data.astype(dtype), self._masks)
 
     def isna(self) -> np.ndarray:
         """Detect N/A elements of the masked-array.
@@ -782,6 +861,9 @@ class MaskedArray:
             # Case 3: `other` is a `MaskedArray` with less dimension
             return self._binary_op(other._broadcast_to(self.shape), func)
         # Case end: self and other are two `MaskedArray` with same shape
+        if self.shape != other.shape:
+            raise ValueError("operands could not be broadcast together with "
+                             f"shapes {self.shape} {other.shape}")
         masks = self._masks
         if other._masks is not None and other._masks.any():
             if masks is None or not masks.any():
@@ -790,6 +872,15 @@ class MaskedArray:
                 masks = masks | other._masks
         data = func(self._data, other._data)
         # pylint: enable=protected-access
+
+        # deal with `np.nan`
+        if np.issubdtype(data.dtype, float):
+            isnan = np.isnan(data)
+            if isnan.any():
+                if masks is None:
+                    masks = isnan
+                else:
+                    masks = masks | isnan
         return MaskedArray(data, masks)
 
     def _logical_unary_op(self, operator: LogicalUnaryOperator
@@ -822,3 +913,71 @@ class MaskedArray:
 
     def __xor__(self, other: _MaskedArrayLike) -> 'MaskedArray':
         return self._logical_binary_op(other, LogicalBinaryOperator.XOR)
+
+    def _arithmetic_unary_op(self, operator: ArithmeticUnaryOperation
+                             ) -> 'MaskedArray':
+        if not np.issubdtype(self.dtype, np.number):
+            raise ValueError("unsupported operand dtype for %s: '%s'"
+                             % (operator.symbol, self.dtype))
+        return self._unary_op(operator.func)
+
+    def _numeric_binary_op(self, other: _MaskedArrayLike,
+                           operator: NumericBinaryOperator
+                           ) -> 'MaskedArray':
+        dtype1 = self.dtype
+        if isinstance(other, MaskedArray):
+            dtype2 = other.dtype
+        else:
+            dtype2 = np.asarray(other).dtype
+        if not(np.issubdtype(dtype1, np.number) and np.issubdtype(dtype2, np.number)):
+            raise ValueError("unsupported operand dtype(s) for %s: '%s' and '%s'"
+                             % (operator.symbol, dtype1, dtype2))
+        return self._binary_op(other, operator.func)
+
+    def __neg__(self) -> 'MaskedArray':
+        return self._arithmetic_unary_op(ArithmeticUnaryOperator.NEG)
+
+    def __abs__(self) -> 'MaskedArray':
+        return self._arithmetic_unary_op(ArithmeticUnaryFunction.ABS)
+
+    def __add__(self, other: _MaskedArrayLike) -> 'MaskedArray':
+        return self._numeric_binary_op(other, ArithmeticBinaryOperator.ADD)
+
+    def __sub__(self, other: _MaskedArrayLike) -> 'MaskedArray':
+        return self._numeric_binary_op(other, ArithmeticBinaryOperator.SUB)
+
+    def __mul__(self, other: _MaskedArrayLike) -> 'MaskedArray':
+        return self._numeric_binary_op(other, ArithmeticBinaryOperator.MUL)
+
+    def __truediv__(self, other: _MaskedArrayLike) -> 'MaskedArray':
+        return self._numeric_binary_op(other, ArithmeticBinaryOperator.DIV)
+
+    def __floordiv__(self, other: _MaskedArrayLike) -> 'MaskedArray':
+        return self._numeric_binary_op(other, ArithmeticBinaryOperator.FDIV)
+
+    def __mod__(self, other: _MaskedArrayLike) -> 'MaskedArray':
+        return self._numeric_binary_op(other, ArithmeticBinaryOperator.MOD)
+
+    def __pow__(self, other: _MaskedArrayLike) -> 'MaskedArray':
+        return self._numeric_binary_op(other, ArithmeticBinaryOperator.POW)
+
+    # When overriding `__eq__` and `__ne__` methods with specified object and
+    # return non-boolean, `mypy` would raise a 'incompatible-override' waring.
+    # So we ignore `mypy` above.
+    def __eq__(self, other: _MaskedArrayLike) -> 'MaskedArray':  # type: ignore
+        return self._numeric_binary_op(other, ComparisonOperator.EQ)
+
+    def __ne__(self, other: _MaskedArrayLike) -> 'MaskedArray':  # type: ignore
+        return self._numeric_binary_op(other, ComparisonOperator.NE)
+
+    def __gt__(self, other: _MaskedArrayLike) -> 'MaskedArray':
+        return self._numeric_binary_op(other, ComparisonOperator.GT)
+
+    def __lt__(self, other: _MaskedArrayLike) -> 'MaskedArray':
+        return self._numeric_binary_op(other, ComparisonOperator.LT)
+
+    def __ge__(self, other: _MaskedArrayLike) -> 'MaskedArray':
+        return self._numeric_binary_op(other, ComparisonOperator.GE)
+
+    def __le__(self, other: _MaskedArrayLike) -> 'MaskedArray':
+        return self._numeric_binary_op(other, ComparisonOperator.LE)

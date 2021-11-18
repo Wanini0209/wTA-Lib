@@ -14,6 +14,11 @@ from .._context import MaskedArray
 # pylint: disable=too-many-arguments
 
 
+def gen_masked_array_like_dataset(data: List[Any]) -> List[Any]:
+    """Generate masked-array-likes equivalent to given data."""
+    return [MaskedArray(data), np.array(data), data] + list(set(data))
+
+
 def get_unbroadcastable_dataset(data: List[Any]) -> List[Tuple]:
     """Generate unbroadcastable dataset for binary operator on `MaskedArray`.
 
@@ -61,7 +66,7 @@ def gen_broadcastable_dataset(data_1: List[Any], data_2: List[Any],
     List[Tuple]
 
     """
-    def _gen_dataset(data_1, data_2, mask_1, mask_2, mask_r, ddim: int
+    def _gen_dataset(data_1, data_2, mask_1, mask_2, mask_r, scalars, ddim: int
                      ) -> List[Tuple]:
         mask_r1, mask_r2 = [mask_1, mask_1], [mask_2, mask_2]
         mask_r = [mask_r, mask_r]
@@ -72,22 +77,22 @@ def gen_broadcastable_dataset(data_1: List[Any], data_2: List[Any],
         ar1, ar2 = np.array(data_1), np.array(data_2)
         # without masks
         op1 = MaskedArray(data_1)
-        ret = [(ar1, True, None, op1, True),
-               (ar1, False, None, op1, False),
-               (ar1, ar2, None, op1, data_2),
-               (ar1, ar2, None, op1, ar2),
-               (ar1, ar2, None, op1, MaskedArray(data_2)),
-               (ar1, ar2, mask_r2, op1, MaskedArray(data_2, mask_2))]
+        ret = [(ar1, each, None, op1, each) for each in scalars]
+        ret += [(ar1, ar2, None, op1, data_2),
+                (ar1, ar2, None, op1, ar2),
+                (ar1, ar2, None, op1, MaskedArray(data_2)),
+                (ar1, ar2, mask_r2, op1, MaskedArray(data_2, mask_2))]
         # with masks
         op1 = MaskedArray(data_1, mask_1)
-        ret += [(ar1, True, mask_1, op1, True),
-                (ar1, False, mask_1, op1, False),
-                (ar1, ar2, mask_r1, op1, data_2),
+        ret += [(ar1, each, mask_1, op1, each) for each in scalars]
+        ret += [(ar1, ar2, mask_r1, op1, data_2),
                 (ar1, ar2, mask_r1, op1, ar2),
                 (ar1, ar2, mask_r1, op1, MaskedArray(data_2)),
                 (ar1, ar2, mask_r, op1, MaskedArray(data_2, mask_2))]
         return ret
     ret = []
+    scalars = list(set(data_2))
     for ddim in [-1, 0, 1]:
-        ret += _gen_dataset(data_1, data_2, mask_1, mask_2, mask_r, ddim)
+        ret += _gen_dataset(data_1, data_2, mask_1, mask_2, mask_r,
+                            scalars, ddim)
     return ret
