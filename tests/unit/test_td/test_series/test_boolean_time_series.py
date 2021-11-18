@@ -11,6 +11,7 @@ from .._context import (
     MaskedArray,
     TimeSeries,
 )
+from ._context import ts_identical
 
 # pylint: disable=no-self-use, too-few-public-methods
 
@@ -69,19 +70,18 @@ class TestLogicalUnaryOperator:
     _DATA = MaskedArray([True, False, True, False], [True, False, False, True])
     _INDEX = ['2021-11-01', '2021-11-02', '2021-11-03', '2021-11-04']
 
-    def test_result_with_expected_contents(self, operator):
-        """Return an instance of `BooleanTimeSeries` with expected contents."""
+    def test_result_with_expected_instance(self, operator):
+        """Return an expected instance of 'BooleanTimeSeries'.
+
+        An instance with expected contents, index, and name.
+
+        """
         bts = BooleanTimeSeries(self._DATA, self._INDEX, 'bts')
         result = operator.func(bts)
-        answer = BooleanTimeSeries(operator.func(self._DATA), self._INDEX, '_')
-        assert result.equals(answer)
-
-    def test_result_with_expected_name(self, operator):
-        """Return an instance of `BooleanTimeSeries` with expected name."""
-        bts = BooleanTimeSeries(self._DATA, self._INDEX, 'bts')
-        result = operator.func(bts).name
-        answer = f'{operator.symbol}bts'
-        assert result == answer
+        answer = BooleanTimeSeries(operator.func(self._DATA),
+                                   self._INDEX,
+                                   f'{operator.symbol}bts')
+        assert ts_identical(result, answer)
 
     def test_result_with_shared_index(self, operator):
         """Return an instance of `BooleanTimeSeries` with shared index."""
@@ -122,22 +122,19 @@ class TestLogicalBinaryOperator:
         with pytest.raises(ValueError):
             _ = operator.func(operand_1, operand_2)
 
-    def test_result_with_expected_contents(self, operator):
-        """Return an instance of `BooleanTimeSeries` with expected contents."""
+    def test_on_two_boolean_time_series_with_equal_index(self, operator):
+        """Return an expected instance of 'BooleanTimeSeries'.
+
+        An instance with expected contents, index, and name.
+
+        """
         operand_1 = BooleanTimeSeries(self._DATA_1, self._INDEX_1, 'bts1')
         operand_2 = BooleanTimeSeries(self._DATA_2, self._INDEX_1, 'bts2')
         result = operator.func(operand_1, operand_2)
         answer = BooleanTimeSeries(operator.func(self._DATA_1, self._DATA_2),
-                                   self._INDEX_1, '_')
-        assert result.equals(answer)
-
-    def test_result_with_expected_name(self, operator):
-        """Return an instance of `BooleanTimeSeries` with expected name."""
-        operand_1 = BooleanTimeSeries(self._DATA_1, self._INDEX_1, 'bts1')
-        operand_2 = BooleanTimeSeries(self._DATA_2, self._INDEX_1, 'bts2')
-        result = operator.func(operand_1, operand_2).name
-        answer = f'bts1 {operator.symbol} bts2'
-        assert result == answer
+                                   self._INDEX_1,
+                                   f'bts1 {operator.symbol} bts2')
+        assert ts_identical(result, answer)
 
     def test_result_with_shared_index(self, operator):
         """Return an instance of `BooleanTimeSeries` with shared index."""
