@@ -18,6 +18,10 @@ from wtalib._td._array import (  # noqa: E402, F401
     MaskedArray,
 )
 from wtalib._td._index import TimeIndex  # noqa: E402, F401
-from wtalib._td._series import BooleanTimeSeries, TimeSeries  # noqa: E402, F401
+from wtalib._td._series import (  # noqa: E402, F401
+    BooleanTimeSeries,
+    NumericTimeSeries,
+    TimeSeries,
+)
 
 # pylint: enable=wrong-import-position, unused-import, wrong-import-order

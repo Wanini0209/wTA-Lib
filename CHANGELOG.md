@@ -13,3 +13,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **MaskedArray**, an array with masks indicating which elements ara N/A.
 - **TimeSeries**, a sequence of data points indexed by time.
 - **BooleanTimeSeries**, a time-series of boolean data.
+- **NumericTimeSeries**, a time-series of numeric data.

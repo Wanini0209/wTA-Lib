@@ -6,6 +6,7 @@ This module provides the base of time-series and its derivatives.
 Classes
 -------
 BooleanTimeSeries : A time-series of boolean data.
+NumericTimeSeries : A time-series of numeric data.
 TimeSeries : A sequence of data points indexed by time.
 
 """
@@ -16,7 +17,7 @@ import numpy as np
 import pandas as pd
 from numpy.typing import ArrayLike
 
-from ._array import MaskedArray
+from ._array import ArithmeticBinaryOperator, ComparisonOperator, MaskedArray
 from ._index import TimeIndex
 
 _MaskedArrayLike = Union[ArrayLike, MaskedArray]
@@ -769,3 +770,182 @@ class BooleanTimeSeries(TimeSeries):
         ret = self._logical_op(other, symbol='^',
                                func=lambda x, y: x ^ y)
         return ret
+
+
+class NumericTimeSeries(TimeSeries):
+    """Time-series of numeric data.
+
+    Support numeric operations as follows:
+    - Arithmetic :
+        Negative(-), Absolute value(abs), Addition(+), Subtraction(-),
+        Multiplication(*), Division(/), Modulus(%), Power(**),
+        Floor division(//).
+    - Comparison :
+        Equal(==), Not equal(!=), Greater than(>), Less than(<),
+        Greater than or equal to(>=), Less than or equal to(<=).
+
+    Except 'Negative(-)' and 'Absolute value(abs)' are unary operators, the
+    others all are binary operators which could be operated on
+    two `NumericTimeSeries` or between a `NumericTimeSeries` and a numeric
+    scalar. The result of arithmetic operators is a `NumericTimeSeries` and
+    the result of comparison operators is a `BooleanTimeSeries`. Some specified
+    rules as follows:
+    - Division(/) :
+        1. Not support zero division.
+        -> raise ZeroDivisionError
+    - Modulus(%) :
+        1. Not support zero division.
+        -> raise ZeroDivisionError
+    - Power(**) :
+        1. Not support `NumericTimeSeries` to `NumericTimeSeries` powers.
+        -> raise TypeError
+    - Floor division(//) :
+        1. Not support zero division.
+        -> raise ZeroDivisionError
+
+    See Also
+    --------
+    TimeSeries, ArithmeticUnaryOperator, ArithmeticUnaryFunction,
+    ArithmeticBinaryOperator, ComparisonOperator
+
+    """
+    def __init__(self, data: _MaskedArrayLike, index: _TimeIndexLike,
+                 name: str, sort: bool = True):
+        super().__init__(data, index, name, sort)
+        if not np.issubdtype(self.dtype, np.number):
+            raise ValueError("non-numeric values in 'data'")
+
+    def _astype(self, dtype: Union[str, type, np.dtype]
+                ) -> 'NumericTimeSeries':
+        # `_make` is a classmethod inherited from `TimeSeries`, but `mypy`
+        # would occur a wrong waring here.
+        # So, ignore `mypy`for wrong warning below.
+        ret = self._make(self._data.astype(dtype), self._index, self._name)
+        return ret  # type: ignore
+
+    def __neg__(self) -> 'NumericTimeSeries':
+        data = -self._data
+        index = self._index
+        name = f'-{self._name}'
+        # `_make` is a classmethod inherited from `TimeSeries`, but `mypy`
+        # would occur a wrong waring here.
+        # So, ignore `mypy`for wrong warning below.
+        return self._make(data, index, name)  # type: ignore
+
+    def __abs__(self) -> 'NumericTimeSeries':
+        data = abs(self._data)
+        index = self._index
+        name = f'abs({self._name})'
+        # `_make` is a classmethod inherited from `TimeSeries`, but `mypy`
+        # would occur a wrong waring here.
+        # So, ignore `mypy`for wrong warning below.
+        return self._make(data, index, name)  # type: ignore
+
+    def _arithmetic_op(self, other: Union['NumericTimeSeries', float, int],
+                       operator: ArithmeticBinaryOperator
+                       ) -> 'NumericTimeSeries':
+        if isinstance(other, NumericTimeSeries):
+            # pylint: disable=protected-access
+            if not self._index.equals(other._index):
+                raise ValueError("inconsistent index")
+            data = operator.func(self._data, other._data)
+            name = f'{self._name} {operator.symbol} {other._name}'
+            # pylint: enable=protected-access
+        elif np.issubdtype(type(other), np.number):
+            data = operator.func(self._data, other)
+            name = f'{self._name} {operator.symbol} {other}'
+        else:
+            raise TypeError("unsupported operand type(s) for %s: '%s' and '%s'"
+                            % (operator.symbol, 'NumericTimeSeries',
+                               type(other).__name__))
+        # `_make` is a classmethod inherited from `TimeSeries`, but `mypy`
+        # would occur a wrong waring here.
+        # So, ignore `mypy`for wrong warning below.
+        return self._make(data, self._index, name)  # type: ignore
+
+    def __add__(self, other: Union['NumericTimeSeries', float, int]
+                ) -> 'NumericTimeSeries':
+        return self._arithmetic_op(other, ArithmeticBinaryOperator.ADD)
+
+    def __sub__(self, other: Union['NumericTimeSeries', float, int]
+                ) -> 'NumericTimeSeries':
+        return self._arithmetic_op(other, ArithmeticBinaryOperator.SUB)
+
+    def __mul__(self, other: Union['NumericTimeSeries', float, int]
+                ) -> 'NumericTimeSeries':
+        return self._arithmetic_op(other, ArithmeticBinaryOperator.MUL)
+
+    def __truediv__(self, other: Union['NumericTimeSeries', float, int]
+                    ) -> 'NumericTimeSeries':
+        if np.issubdtype(type(other), np.number) and other == 0:
+            raise ZeroDivisionError("idivision by zero")
+        return self._arithmetic_op(other, ArithmeticBinaryOperator.DIV)
+
+    def __floordiv__(self, other: Union['NumericTimeSeries', float, int]
+                     ) -> 'NumericTimeSeries':
+        if np.issubdtype(type(other), np.number) and other == 0:
+            raise ZeroDivisionError("integer division by zero")
+        return self._arithmetic_op(other, ArithmeticBinaryOperator.FDIV)
+
+    def __mod__(self, other: Union['NumericTimeSeries', float, int]
+                ) -> 'NumericTimeSeries':
+        if np.issubdtype(type(other), np.number) and other == 0:
+            raise ZeroDivisionError("modulo by zero")
+        return self._arithmetic_op(other, ArithmeticBinaryOperator.MOD)
+
+    def __pow__(self, other: Union[float, int]
+                ) -> 'NumericTimeSeries':
+        if not np.issubdtype(type(other), np.number):
+            raise TypeError("unsupported operand type(s) for **: '%s' and '%s'"
+                            % ('NumericTimeSeries', type(other).__name__))
+        if np.issubdtype(self.dtype, int) and other < 0:
+            ret = self._astype(float)
+            return ret._arithmetic_op(other, ArithmeticBinaryOperator.POW)
+        return self._arithmetic_op(other, ArithmeticBinaryOperator.POW)
+
+    def _comparison_op(self, other: Union['NumericTimeSeries', float, int],
+                       operator: ComparisonOperator) -> BooleanTimeSeries:
+        if isinstance(other, NumericTimeSeries):
+            # pylint: disable=protected-access
+            if not self._index.equals(other._index):
+                raise ValueError("inconsistent index")
+            data = operator.func(self._data, other._data)
+            name = f'{self._name} {operator.symbol} {other._name}'
+            # pylint: enable=protected-access
+        elif np.issubdtype(type(other), np.number):
+            data = operator.func(self._data, other)
+            name = f'{self._name} {operator.symbol} {other}'
+        else:
+            raise TypeError("unsupported operand type(s) for %s: '%s' and '%s'"
+                            % (operator.symbol, 'NumericTimeSeries',
+                               type(other).__name__))
+        return BooleanTimeSeries(data, self._index, name, sort=False)
+
+    # When overriding `__eq__` and `__ne__` methods with specified object and
+    # return non-boolean, `mypy` would raise a 'incompatible-override' waring.
+    # So we ignore `mypy` above.
+    def __eq__(self,  # type: ignore
+               other: Union['NumericTimeSeries', float, int]
+               ) -> BooleanTimeSeries:
+        return self._comparison_op(other, ComparisonOperator.EQ)
+
+    def __ne__(self,  # type: ignore
+               other: Union['NumericTimeSeries', float, int]
+               ) -> BooleanTimeSeries:
+        return self._comparison_op(other, ComparisonOperator.NE)
+
+    def __gt__(self, other: Union['NumericTimeSeries', float, int]
+               ) -> BooleanTimeSeries:
+        return self._comparison_op(other, ComparisonOperator.GT)
+
+    def __lt__(self, other: Union['NumericTimeSeries', float, int]
+               ) -> BooleanTimeSeries:
+        return self._comparison_op(other, ComparisonOperator.LT)
+
+    def __ge__(self, other: Union['NumericTimeSeries', float, int]
+               ) -> BooleanTimeSeries:
+        return self._comparison_op(other, ComparisonOperator.GE)
+
+    def __le__(self, other: Union['NumericTimeSeries', float, int]
+               ) -> BooleanTimeSeries:
+        return self._comparison_op(other, ComparisonOperator.LE)
