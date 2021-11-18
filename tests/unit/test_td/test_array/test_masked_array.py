@@ -238,6 +238,29 @@ class TestLen:
         assert len(np.array(data)) == len(array)
 
 
+class TestAstype:
+    """Test related to `MaskedArray.astype`.
+
+    See Also
+    --------
+    numpy.ndarray.astype
+
+    """
+    def test_downcasting(self):
+        """Return an instance of `MaskedArray` with expected contents."""
+        data = [-1.75, -1.5, -1.25, -0.5, 0, 0.5, 1.25, 1.5, 1.75]
+        result = MaskedArray(data).astype(int)
+        answer = MaskedArray(np.array(data, int))
+        assert result.equals(answer)
+
+    def test_upcasting(self):
+        """Return an instance of `MaskedArray` with expected contents."""
+        data = [-2, -1, 0, 1, 2]
+        result = MaskedArray(data).astype(float)
+        answer = MaskedArray(np.array(data, float))
+        assert result.equals(answer)
+
+
 class TestIsNa:
     """Tests related to `MaskedArray.isna`.
 

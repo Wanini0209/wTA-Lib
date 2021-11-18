@@ -128,6 +128,8 @@ class MaskedArray:
 
     Methods
     ----------
+    astype : MaskedArray
+        Return a copy of the masked-array casting to a specified type.
     isna : numpy.ndarray
         Return a same-sized boolean array indicating if the elements in the
         masked-array are N/A.
@@ -326,6 +328,37 @@ class MaskedArray:
 
         """
         return len(self._data)
+
+    def astype(self, dtype: Union[str, type, np.dtype]) -> 'MaskedArray':
+        """Copy of the masked-array, cast to a specified data-type.
+
+        Return a copy of the masked-array casting to a `dtype`.
+
+        Parameters
+        ----------
+        dtype : str or dtype
+            Typecode or data-type to which the masked-array is cast.
+
+        Returns
+        -------
+        MaskedArray
+
+        See Also
+        --------
+        numpy.ndarray.astype
+
+        Examples
+        --------
+        >>> MaskedArray([1, 2, 3]).astype(float)
+        array([1., 2., 3.], dtype=float64)
+
+        Down-casting:
+        >>> MaskedArray([-1.75, -1.5, -1.25, -0.5, 0,
+                         0.5, 1.25, 1.5, 1.75]).astype(int)
+        array([-1, -1, -1,  0,  0,  0,  1,  1,  1], dtype=int32)
+
+        """
+        return MaskedArray(self._data.astype(dtype), self._masks)
 
     def isna(self) -> np.ndarray:
         """Detect N/A elements of the masked-array.
