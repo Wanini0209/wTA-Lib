@@ -11,13 +11,18 @@ TimeSeries : A sequence of data points indexed by time.
 
 """
 
-from typing import Any, Callable, Union
+from typing import Any, Union
 
 import numpy as np
 import pandas as pd
 from numpy.typing import ArrayLike
 
-from ._array import ArithmeticBinaryOperator, ComparisonOperator, MaskedArray
+from ._array import (
+    ArithmeticBinaryOperator,
+    ComparisonOperator,
+    LogicalBinaryOperator,
+    MaskedArray,
+)
 from ._index import TimeIndex
 
 _MaskedArrayLike = Union[ArrayLike, MaskedArray]
@@ -717,7 +722,7 @@ class BooleanTimeSeries(TimeSeries):
 
     See Also
     --------
-    TimeSeries.
+    TimeSeries, LogicalBinaryOperator, LogicalUnaryOperator.
 
     """
     def __init__(self, data: _MaskedArrayLike, index: _TimeIndexLike,
@@ -736,19 +741,17 @@ class BooleanTimeSeries(TimeSeries):
         return self._make(data, index, name)  # type: ignore
 
     def _logical_op(self, other: 'BooleanTimeSeries',
-                    symbol: 'str',
-                    func: Callable[[MaskedArray, MaskedArray], MaskedArray]
-                    ) -> 'BooleanTimeSeries':
+                    operator: LogicalBinaryOperator) -> 'BooleanTimeSeries':
         if not isinstance(other, BooleanTimeSeries):
             raise TypeError("unsupported operand type(s) for %s: '%s' and '%s'"
-                            % (symbol, 'BooleanTimeSeries',
+                            % (operator.symbol, 'BooleanTimeSeries',
                                other.__class__.__name__))
         # pylint: disable=protected-access
         if not self._index.equals(other._index):
             raise ValueError("inconsistent index")
-        data = func(self._data, other._data)
+        data = operator.func(self._data, other._data)
         index = self._index
-        name = f'{self._name} {symbol} {other._name}'
+        name = f'{self._name} {operator.symbol} {other._name}'
         # pylint: enable=protected-access
 
         # `_make` is a classmethod inherited from `TimeSeries`, but `mypy`
@@ -757,19 +760,13 @@ class BooleanTimeSeries(TimeSeries):
         return self._make(data, index, name)  # type: ignore
 
     def __and__(self, other: 'BooleanTimeSeries') -> 'BooleanTimeSeries':
-        ret = self._logical_op(other, symbol='&',
-                               func=lambda x, y: x & y)
-        return ret
+        return self._logical_op(other, LogicalBinaryOperator.AND)
 
     def __or__(self, other: 'BooleanTimeSeries') -> 'BooleanTimeSeries':
-        ret = self._logical_op(other, symbol='|',
-                               func=lambda x, y: x | y)
-        return ret
+        return self._logical_op(other, LogicalBinaryOperator.OR)
 
     def __xor__(self, other: 'BooleanTimeSeries') -> 'BooleanTimeSeries':
-        ret = self._logical_op(other, symbol='^',
-                               func=lambda x, y: x ^ y)
-        return ret
+        return self._logical_op(other, LogicalBinaryOperator.XOR)
 
 
 class NumericTimeSeries(TimeSeries):
