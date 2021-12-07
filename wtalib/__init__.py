@@ -16,8 +16,13 @@ wTA-Lib is a financial technical analysis library, written in Python.
 """
 
 # pylint: disable=unused-import
-from ._td import BooleanTimeSeries, NumericTimeSeries, TimeSeries  # noqa: F401
+from ._td import (  # noqa: F401
+    BooleanTimeSeries,
+    NumericTimeSeries,
+    TimeSeries,
+    TimeUnit,
+)
 
 # pylint: enable=unused-import
 
-__ALL__ = ['BooleanTimeSeries', 'NumericTimeSeries', 'TimeSeries']
+__ALL__ = ['BooleanTimeSeries', 'NumericTimeSeries', 'TimeSeries', 'TimeUnit']
