@@ -7,7 +7,16 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from .._context import MaskedArray, TimeIndex, TimeSeries
+from .._context import (
+    NP_DATETIME_DTYPES,
+    UNIT_VS_EQUIV_DTYPES,
+    UNIT_VS_SUB_DTYPES,
+    UNIT_VS_SUPER_DTYPES,
+    MaskedArray,
+    TimeIndex,
+    TimeSeries,
+)
+from ._context import ts_identical
 
 # pylint: disable=no-self-use, too-few-public-methods
 
@@ -689,3 +698,135 @@ class TestToPandas:
         cond_1 = result.name == answer.name
         cond_2 = result.equals(answer)
         assert cond_1 and cond_2
+
+
+class TestShift:
+    """Tests related to `shift` of `TimeSeries`.
+
+    """
+    def test_with_non_integer_period(self):
+        """Should raise TypeError."""
+        values = np.arange(4)
+        dates = ['2021-11-01', '2021-11-02', '2021-11-03', '2021-11-04']
+        tseries = TimeSeries(values, dates, 'ts')
+        with pytest.raises(TypeError):
+            tseries.shift(1.)
+
+    def test_with_zeor_period(self):
+        """Should raise ValueError."""
+        values = np.arange(4)
+        dates = ['2021-11-01', '2021-11-02', '2021-11-03', '2021-11-04']
+        tseries = TimeSeries(values, dates, 'ts')
+        with pytest.raises(ValueError):
+            tseries.shift(0)
+
+    def test_with_invalid_punit(self):
+        """Should raise TypeError."""
+        values = np.arange(4)
+        dates = ['2021-11-01', '2021-11-02', '2021-11-03', '2021-11-04']
+        tseries = TimeSeries(values, dates, 'ts')
+        with pytest.raises(TypeError):
+            tseries.shift(1, 'day')
+
+    @pytest.mark.parametrize('unit, dtype', UNIT_VS_SUPER_DTYPES)
+    def test_with_sub_punit(self, unit, dtype):
+        """Should raise ValueError."""
+        values = np.arange(4)
+        dates = np.arange(4).astype(dtype)
+        tseries = TimeSeries(values, dates, 'ts')
+        with pytest.raises(ValueError):
+            tseries.shift(1, unit)
+
+    @pytest.mark.parametrize('dtype', NP_DATETIME_DTYPES)
+    def test_with_positive_period_without_specified_punit(self, dtype):
+        """Should return a time-series with expected contents."""
+        values = np.arange(8)
+        masks = values % 2 == 0
+        data = MaskedArray(values, masks)
+        index = TimeIndex(values.astype(dtype))
+        tseries = TimeSeries(data, index, 'ts')
+        result = tseries.shift(2)
+        answer = TimeSeries(data.shift(2), index, 'ts.shift(2)')
+        assert ts_identical(result, answer)
+
+    @pytest.mark.parametrize('dtype', NP_DATETIME_DTYPES)
+    def test_with_negative_period_without_specified_punit(self, dtype):
+        """Should return a time-series with expected contents."""
+        values = np.arange(8)
+        masks = values % 2 == 0
+        data = MaskedArray(values, masks)
+        index = TimeIndex(values.astype(dtype))
+        tseries = TimeSeries(data, index, 'ts')
+        result = tseries.shift(-2)
+        answer = TimeSeries(data.shift(-2), index, 'ts.shift(-2)')
+        assert ts_identical(result, answer)
+
+    @pytest.mark.parametrize('unit, dtype', UNIT_VS_EQUIV_DTYPES)
+    def test_with_positive_period_of_equivalent_punit(self, unit, dtype):
+        """Should return a time-series with expected contents."""
+        values = np.arange(8)
+        masks = values % 2 == 0
+        data = MaskedArray(values, masks)
+        index = TimeIndex(values.astype(dtype))
+        tseries = TimeSeries(data, index, 'ts')
+        result = tseries.shift(2, unit)
+        answer = TimeSeries(data.shift(2), index, f'ts.shift(2, {unit.name})')
+        assert ts_identical(result, answer)
+
+    @pytest.mark.parametrize('unit, dtype', UNIT_VS_EQUIV_DTYPES)
+    def test_shift_by_negative_period_of_equivalent_unit(self, unit, dtype):
+        """Should return a time-series with expected contents."""
+        values = np.arange(8)
+        masks = values % 2 == 0
+        data = MaskedArray(values, masks)
+        index = TimeIndex(values.astype(dtype))
+        tseries = TimeSeries(data, index, 'ts')
+        result = tseries.shift(-2, unit)
+        answer = TimeSeries(data.shift(-2), index, f'ts.shift(-2, {unit.name})')
+        assert ts_identical(result, answer)
+
+    @classmethod
+    def _generate_dates_for_test_on_superunit(cls, length, dtype, unit):
+        codes = unit.decode(np.arange(length // 3 + 1)
+                            ).astype(dtype).astype(int)
+        codes = [codes[:-1], (codes[:-1] + codes[1:]) // 2, codes[1:] - 1]
+        dates = np.array(codes).T.flatten().astype(dtype)
+        return dates
+
+    @pytest.mark.parametrize('unit, dtype', UNIT_VS_SUB_DTYPES)
+    def test_shift_by_positive_period_of_superunit(self, unit, dtype):
+        """Should return a time-series with expected contents.
+
+        In this test, we generate an array of datetimes with desired dtype,
+        in which per three elements are in the same offset of desired time-unit.
+
+        """
+        values = np.arange(12)
+        masks = values % 2 == 0
+        data = MaskedArray(values, masks)
+        dates = self._generate_dates_for_test_on_superunit(12, dtype, unit)
+        index = TimeIndex(dates)
+        tseries = TimeSeries(data, index, 'ts')
+        result = tseries.shift(2, unit)
+        answer = TimeSeries(index.shift(data, 2, unit), index,
+                            f'ts.shift(2, {unit.name})')
+        assert ts_identical(result, answer)
+
+    @pytest.mark.parametrize('unit, dtype', UNIT_VS_SUB_DTYPES)
+    def test_shift_by_negative_period_of_superunit(self, unit, dtype):
+        """Should return a masked-array with expected contents.
+
+        In this test, we generate an array of datetimes with desired dtype,
+        in which per three elements are in the same offset of desired time-unit.
+
+        """
+        values = np.arange(12)
+        masks = values % 2 == 0
+        data = MaskedArray(values, masks)
+        dates = self._generate_dates_for_test_on_superunit(12, dtype, unit)
+        index = TimeIndex(dates)
+        tseries = TimeSeries(data, index, 'ts')
+        result = tseries.shift(-2, unit)
+        answer = TimeSeries(index.shift(data, -2, unit), index,
+                            f'ts.shift(-2, {unit.name})')
+        assert ts_identical(result, answer)

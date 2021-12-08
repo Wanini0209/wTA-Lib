@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# pylint: disable=too-many-lines
 """Time Series.
 
 This module provides the base of time-series and its derivatives.
@@ -11,7 +12,7 @@ TimeSeries : A sequence of data points indexed by time.
 
 """
 
-from typing import Any, Union
+from typing import Any, Optional, Union
 
 import numpy as np
 import pandas as pd
@@ -24,6 +25,7 @@ from ._array import (
     MaskedArray,
 )
 from ._index import TimeIndex
+from ._unit import TimeUnit
 
 _MaskedArrayLike = Union[ArrayLike, MaskedArray]
 _TimeIndexLike = Union[ArrayLike, TimeIndex]
@@ -97,6 +99,8 @@ class TimeSeries:
         fill it by the next available element.
     dropna : TimeSeries
         Remove N/A elements.
+    shift :
+        Shift index by desired number of periods with given time-unit.
 
     Examples
     --------
@@ -603,6 +607,189 @@ class TimeSeries:
             index = index[~isna]    # type: ignore
             data = data[~isna]
         return self._make(data, index, self._name)
+
+    def shift(self, period: int, punit: Optional[TimeUnit] = None
+              ) -> 'TimeSeries':
+        """Shift index by desired number of periods with given time-unit.
+
+        Parameters
+        ----------
+        period : int
+            Number of positions or units, which specified by `punit`, to shift.
+            Can be positive or negative but not zero. The actions are described
+            as follows:
+            - If `period` is set as a positive integr, n, the index are shifted
+            backward n positions or n units.
+            - If `period` is set as a negative integer, -n, the index are
+            shifted forward n positions or n units.
+        punit : TimeUnit, optional
+            It is optional. It it is specified, it must be an instance of
+            `TimeUnit` which is a super-unit of or equivalent to the dtype of
+            index.
+
+        Returns
+        -------
+        TimeSeries
+            A copy of the time-series with index shifted by desired periods.
+
+        See Also
+        --------
+        TimeIndex.shift
+
+        Examples
+        --------
+        >>> dates = (['2021-11-01', '2021-11-03', '2021-11-06', '2021-11-10',
+                      '2021-11-13', '2021-11-15', '2021-11-18', '2021-11-22',
+                      '2021-11-25', '2021-11-27', '2021-11-30', '2021-12-03'])
+        >>> data = MaskedArray(np.arange(12))
+        >>> tseries = TimeSeries(data, dates, 'ts')
+        >>> tseries
+        2021-11-01	0
+        2021-11-03	1
+        2021-11-06	2
+        2021-11-10	3
+        2021-11-13	4
+        2021-11-15	5
+        2021-11-18	6
+        2021-11-22	7
+        2021-11-25	8
+        2021-11-27	9
+        2021-11-30	10
+        2021-12-03	11
+        Name: ts, dtype: int32
+
+        1A. positive `period` and no specified `punit`:
+
+        >>> tseries.shift(2)
+        2021-11-01	nan
+        2021-11-03	nan
+        2021-11-06	0
+        2021-11-10	1
+        2021-11-13	2
+        2021-11-15	3
+        2021-11-18	4
+        2021-11-22	5
+        2021-11-25	6
+        2021-11-27	7
+        2021-11-30	8
+        2021-12-03	9
+        Name: ts.shift(2), dtype: int32
+
+        1B. negative `period` and no specified `punit`:
+
+        >>> tseries.shift(-2)
+        2021-11-01	2
+        2021-11-03	3
+        2021-11-06	4
+        2021-11-10	5
+        2021-11-13	6
+        2021-11-15	7
+        2021-11-18	8
+        2021-11-22	9
+        2021-11-25	10
+        2021-11-27	11
+        2021-11-30	nan
+        2021-12-03	nan
+        Name: ts.shift(-2), dtype: int32
+
+        2A. positive `period` and equivalent `punit`:
+
+        >>> tseries.shift(2, TimeUnit.DAY)
+        2021-11-01	nan
+        2021-11-03	nan
+        2021-11-06	0
+        2021-11-10	1
+        2021-11-13	2
+        2021-11-15	3
+        2021-11-18	4
+        2021-11-22	5
+        2021-11-25	6
+        2021-11-27	7
+        2021-11-30	8
+        2021-12-03	9
+        Name: ts.shift(2, day), dtype: int32
+
+        2B. negative `period` and equivalent `punit`:
+
+        >>> tseries.shift(-2, TimeUnit.DAY)
+        2021-11-01	2
+        2021-11-03	3
+        2021-11-06	4
+        2021-11-10	5
+        2021-11-13	6
+        2021-11-15	7
+        2021-11-18	8
+        2021-11-22	9
+        2021-11-25	10
+        2021-11-27	11
+        2021-11-30	nan
+        2021-12-03	nan
+        Name: ts.shift(-2, day), dtype: int32
+
+        3A. positive `period` and super-unit `punit`:
+
+        >>> tseries.shift(2, TimeUnit.WEEK)
+        2021-11-01	nan
+        2021-11-03	nan
+        2021-11-06	nan
+        2021-11-10	nan
+        2021-11-13	nan
+        2021-11-15	2
+        2021-11-18	2
+        2021-11-22	4
+        2021-11-25	4
+        2021-11-27	4
+        2021-11-30	6
+        2021-12-03	6
+        Name: ts.shift(2, week), dtype: int32
+
+        3B. negative `period` and super-unit `punit`:
+
+        >>> tseries.shift(-2, TimeUnit.WEEK)
+        2021-11-01	5
+        2021-11-03	5
+        2021-11-06	5
+        2021-11-10	7
+        2021-11-13	7
+        2021-11-15	10
+        2021-11-18	10
+        2021-11-22	nan
+        2021-11-25	nan
+        2021-11-27	nan
+        2021-11-30	nan
+        2021-12-03	nan
+        Name: ts.shift(-2, week), dtype: int32
+
+        4. sub-unit `punit`:
+
+        >>> tseries.shift(1, TimeUnit.HOUR)
+        ValueError: not support shift 'TimeUnit.HOUR' on 'datetime64[D]' datetimes
+
+        5. non-integer `period`:
+
+        >>> tseries.shift(1.)
+        TypeError: 'period' must be 'int' not 'float'
+
+        6. zero `period`:
+
+        >>> tseries.shift(0)
+        ValueError: 'period' can not be zero
+
+        7. undefined `punit`:
+
+        >>> tseries.shift(1, np.dtype('datetime64[D]'))
+        TypeError: 'punit' must be 'TimeUnit' not 'dtype[datetime64]'
+
+        >>> tseries.shift(1, 'day')
+        TypeError: 'punit' must be 'TimeUnit' not 'str'
+
+        """
+        data = self._index.shift(self._data, period, punit)
+        if punit is None:
+            name = f'{self._name}.shift({period})'
+        else:
+            name = f'{self._name}.shift({period}, {punit.name})'
+        return self._make(data, self._index, name)
 
     @classmethod
     def _make(cls, data: MaskedArray, index: TimeIndex, name: str

@@ -7,10 +7,72 @@ current package.
 """
 
 import datetime
-from typing import Any, Union
+from typing import Any, Dict, Optional, Union
 
 import numpy as np
 from numpy.typing import ArrayLike
+
+from ._array import MaskedArray
+from ._unit import TimeUnit
+
+
+class _IndexGroupByTimeUnit:
+    """Index-grouper by time-unit.
+
+    Parameters
+    ----------
+    index : array of datetimes
+    unit : TimeUnit
+
+    Methods
+    -------
+    shift : Shift given values along the index by given period.
+
+    Notes
+    -----
+    Because it is a private class and only used in this module, ignore
+    unnecessary dynamic checking for better performance.
+
+    """
+    def __init__(self, index: np.ndarray, unit: TimeUnit):
+        # Only used in current module, ignore dynamic type checking.
+        values = unit.encode(index)
+        is_changed = values[1:] != values[:-1]
+        is_begin = np.concatenate([[True], is_changed])
+        is_end = np.concatenate([is_changed, [True]])
+        self._group_id = np.cumsum(is_begin) - 1
+        self._begin_idx = np.where(is_begin)[0]  # only 1-D
+        self._end_idx = np.where(is_end)[0]  # only 1-D
+
+    def shift(self, values: MaskedArray, period: int) -> MaskedArray:
+        """Shift values by desired period along the index.
+
+        Parameters
+        ----------
+        values : MaskedArray
+            A data array has equal length of the index.
+        period : int
+            Number of periods to shift. It could be positive or negative but
+            not be zero. If `period` is set as a positive integer, n, it return
+            the elements of `values` corresponding to the index shifted
+            backward n units and the elements corresponging to the first n
+            units are set to be N/A. If `period` is set as a negative integer,
+            -n, it return the elements of `values` corresponding to the index
+            shifted forward n units and the elements corresponging to the last
+            n units are set to be N/A.
+
+        """
+        # Only used in current module, ignore length checking and value checking
+        if period > 0:
+            idxs = self._end_idx[self._group_id - period]
+        else:
+            idxs = self._begin_idx[self._group_id - period - len(self._begin_idx)]
+        ret = values[idxs]
+        if period > 0:
+            ret[:self._begin_idx[period]] = np.nan
+        else:
+            ret[self._begin_idx[period]:] = np.nan
+        return ret
 
 
 class TimeIndex:
@@ -26,6 +88,8 @@ class TimeIndex:
         `numpy.datetime64`.
     sort : bool
         If ``True``, sort `data`; otherwise do not. Default is ``True``.
+    shift : MaskedArray
+        Shift values equivalent to the time-index shifted by desired period.
 
     Notes
     -----
@@ -98,6 +162,7 @@ class TimeIndex:
         self._values = np.array(data, dtype=np.datetime64)
         if sort:
             self._values.sort()
+        self._grouper: Dict[TimeUnit, _IndexGroupByTimeUnit] = {}
 
     @property
     def values(self) -> np.ndarray:
@@ -281,6 +346,110 @@ class TimeIndex:
             return TimeIndex(values, sort=False)
         # return a datetime
         return values.tolist()
+
+    def shift(self, values: MaskedArray, period: int,
+              punit: Optional[TimeUnit] = None) -> MaskedArray:
+        """Shift values equivalent to the time-index shifted by desired period.
+
+        Parameters
+        ----------
+        values : MaskedArray
+            A data array has same length of the time-index.
+        period : int
+            Number of periods to shift. It could be positive or negative but
+            not be zero. If `period` is set as a positive integer, n, it return
+            the elements of `values` corresponding to the index shifted
+            backward n units and the elements corresponging to the first n
+            units are set to be N/A. If `period` is set as a negative integer,
+            -n, it return the elements of `values` corresponding to the index
+            shifted forward n units and the elements corresponging to the last
+            n units are set to be N/A.
+        punit : TimeUnit, optional
+            It is optional. It it is specified, it must be an instance of
+            `TimeUnit` which is a super-unit of or equivalent to the dtype of
+            index.
+
+        See Also
+        --------
+        _IndexGroupByTimeUnit.shift
+
+        Examples
+        --------
+        >>> tindex = TimeIndex(['2021-11-01', '2021-11-03', '2021-11-06',
+                                '2021-11-10', '2021-11-13', '2021-11-15',
+                                '2021-11-18', '2021-11-22', '2021-11-25',
+                                '2021-11-27', '2021-11-30', '2021-12-03'])
+        >>> values = MaskedArray(np.arange(12))
+        >>> values
+        array([ 0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11], dtype=int32)
+
+        1A. positive `period` and no specified `punit`:
+
+        >>> tindex.shift(values, 2)
+        array([nan, nan, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9], dtype=int32)
+
+        1B. negative `period` and no specified `punit`:
+
+        >>> tindex.shift(values, -2)
+        array([2, 3, 4, 5, 6, 7, 8, 9, 10, 11, nan, nan], dtype=int32)
+
+        2A. positive `period` and equivalent `punit`:
+
+        >>> tindex.shift(values, 2, TimeUnit.DAY)
+        array([nan, nan, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9], dtype=int32)
+
+        2B. negative `period` and equivalent `punit`:
+
+        >>> tindex.shift(values, -2, TimeUnit.DAY)
+        array([2, 3, 4, 5, 6, 7, 8, 9, 10, 11, nan, nan], dtype=int32)
+
+        3A. positive `period` and super-unit `punit`:
+
+        >>> tindex.shift(values, 2, TimeUnit.WEEK)
+        array([nan, nan, nan, nan, nan, 2, 2, 4, 4, 4, 6, 6], dtype=int32)
+
+        3B. negative `period` and super-unit `punit`:
+
+        >>> tindex.shift(values, -2, TimeUnit.WEEK)
+        array([5, 5, 5, 7, 7, 10, 10, nan, nan, nan, nan, nan], dtype=int32)
+
+        4. sub-unit `punit`:
+
+        >>> tindex.shift(values, 1, TimeUnit.HOUR)
+        ValueError: not support shift 'TimeUnit.HOUR' on 'datetime64[D]' datetimes
+
+        5. non-integer `period`:
+
+        >>> tindex.shift(values, 1.)
+        TypeError: 'period' must be 'int' not 'float'
+
+        6. zero `period`:
+
+        >>> tindex.shift(values, 0)
+        ValueError: 'period' can not be zero
+
+        7. invalid `punit`:
+
+        >>> tindex.shift(values, 1, 'day')
+        TypeError: 'punit' must be 'TimeUnit' not 'str'
+
+        """
+        if not isinstance(period, int):
+            raise TypeError("'period' must be 'int' not '%s'"
+                            % type(period).__name__)
+        if period == 0:
+            raise ValueError("'period' can not be zero")
+        if punit is not None and not isinstance(punit, TimeUnit):
+            raise TypeError("'punit' must be 'TimeUnit' not '%s'"
+                            % type(punit).__name__)
+        if punit is None or punit.isequiv(self._values.dtype):
+            return values.shift(period)
+        if punit.issub(self._values.dtype):
+            raise ValueError("not support shift '%s' on '%s' datetimes"
+                             % (punit, self._values.dtype.name))
+        if punit not in self._grouper:
+            self._grouper[punit] = _IndexGroupByTimeUnit(self._values, punit)
+        return self._grouper[punit].shift(values, period)
 
     def __repr__(self) -> str:
         """String representation for the time-index.
