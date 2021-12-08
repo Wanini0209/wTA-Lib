@@ -695,3 +695,85 @@ class TestSubscript:
         """Return ``numpy.nan``."""
         result = MaskedArray([1, 2], [True, False])[0]
         assert result is np.nan
+
+
+class TestSetitem:
+    """Tests related to item-assignment of `MaskedArray`.
+
+    """
+    @pytest.mark.parametrize('value', [MaskedArray([-1, -1]),
+                                       np.array([-1, -1]), [-1, -1]])
+    def test_assigned_by_broadcastable_value_without_na(self, value):
+        """Should be modified to contain expected contents."""
+        data = [[1, 2], [3, 4], [5, 6], [7, 8]]
+        # test for masked-array without N/A
+        array = MaskedArray(data)
+        array[1:-1] = value
+        answer = MaskedArray([[1, 2], [-1, -1], [-1, -1], [7, 8]])
+        cond_1 = array.equals(answer)
+        # test for masked-array with N/As
+        masks = [[True, True], [False, True], [True, False], [False, False]]
+        array_m = MaskedArray(data, masks)
+        array_m[1:-1] = value
+        answer_m = MaskedArray([[1, 2], [-1, -1], [-1, -1], [7, 8]],
+                               [[True, True], [False, False],
+                                [False, False], [False, False]])
+        cond_2 = array_m.equals(answer_m)
+        assert cond_1 and cond_2
+
+    @pytest.mark.parametrize('value',
+                             [MaskedArray([-1, -1], [True, False]),
+                              np.array([np.nan, -1]), [np.nan, -1]])
+    def test_assigned_by_broadcastable_value_with_na(self, value):
+        """Should be modified to contain expected contents."""
+        data = [[1, 2], [3, 4], [5, 6], [7, 8]]
+        # test for masked-array without N/A
+        array = MaskedArray(data)
+        array[1:-1] = value
+        answer = MaskedArray([[1, 2], [-1, -1], [-1, -1], [7, 8]],
+                             [[False, False], [True, False],
+                              [True, False], [False, False]])
+        cond_1 = array.equals(answer)
+        # test for masked-array with N/As
+        masks = [[True, True], [False, True], [True, False], [False, False]]
+        array_m = MaskedArray(data, masks)
+        array_m[1:-1] = value
+        answer_m = MaskedArray([[1, 2], [-1, -1], [-1, -1], [7, 8]],
+                               [[True, True], [True, False],
+                                [True, False], [False, False]])
+        cond_2 = array_m.equals(answer_m)
+        assert cond_1 and cond_2
+
+    def test_assigned_by_available_scalar(self):
+        """Should be modified to contain expected contents."""
+        data = [[1, 2], [3, 4], [5, 6], [7, 8]]
+        # test for masked-array without N/A
+        array = MaskedArray(data)
+        array[1:-1] = -1
+        answer = MaskedArray([[1, 2], [-1, -1], [-1, -1], [7, 8]])
+        cond_1 = array.equals(answer)
+        # test for masked-array with N/As
+        masks = np.array([[True, True], [False, True],
+                          [True, False], [False, False]])
+        array_m = MaskedArray(data, masks)
+        array_m[masks] = -1
+        answer_m = MaskedArray([[-1, -1], [3, -1], [-1, 6], [7, 8]])
+        cond_2 = array_m.equals(answer_m)
+        assert cond_1 and cond_2
+
+    def test_assigned_by_nonavailable_scalar(self):
+        """Should be modified to contain expected contents."""
+        data = np.array([[1, 2], [3, 4], [5, 6], [7, 8]])
+        masks = np.array([[True, True], [False, True],
+                          [True, False], [False, False]])
+        # test for masked-array without N/A
+        array = MaskedArray(data)
+        array[masks] = np.nan
+        answer = MaskedArray(data, masks)
+        cond_1 = array.equals(answer)
+        # test for masked-array with N/As
+        array_m = MaskedArray(data, masks)
+        array_m[~masks] = np.nan
+        answer_m = MaskedArray(data, np.full(data.shape, True))
+        cond_2 = array_m.equals(answer_m)
+        assert cond_1 and cond_2

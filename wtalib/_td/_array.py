@@ -838,6 +838,132 @@ class MaskedArray:
         masks[tuple(idxs)] = True
         return MaskedArray(data, masks)
 
+    def __setitem__(self, key: Any, value: Any):
+        """Item-Assignment.
+
+        Parameters
+        ----------
+        key:
+            Subscript, indicating the desired item(s).
+        value:
+            Value(s), assigned to the desired item(s).
+
+        See Also
+        --------
+        numpy.ndarray
+
+        Examples
+        --------
+        >>> data = np.arange(30).reshape((5,6))
+        >>> masks = data % 7 == 0
+        >>> array = MaskedArray(data, masks)
+        >>> array
+        array([[nan, 1, 2, 3, 4, 5],
+               [6, nan, 8, 9, 10, 11],
+               [12, 13, nan, 15, 16, 17],
+               [18, 19, 20, nan, 22, 23],
+               [24, 25, 26, 27, nan, 29]], dtype=int32)
+
+        1. Subscript to a sub-array and assigned by a broadcastable `value`:
+
+        >>> array = MaskedArray(data, masks)
+        >>> array[2:] = array[:-2]
+        >>> array
+        array([[nan, 1, 2, 3, 4, 5],
+               [6, nan, 8, 9, 10, 11],
+               [nan, 1, 2, 3, 4, 5],
+               [6, nan, 8, 9, 10, 11],
+               [12, 13, nan, 15, 16, 17]], dtype=int32)
+
+        >>> array = MaskedArray(data, masks)
+        >>> array[2:] = [np.nan, 1, 2, 3, 4, 5]
+        >>> array
+        array([[nan, 1, 2, 3, 4, 5],
+               [6, nan, 8, 9, 10, 11],
+               [nan, 1, 2, 3, 4, 5],
+               [nan, 1, 2, 3, 4, 5],
+               [nan, 1, 2, 3, 4, 5]], dtype=int32)
+
+        2. Subscript to a set of elements and assigned by a scalar or a
+           same-sized set of scalars:
+
+        >>> array = MaskedArray(data, masks)
+        >>> array[array.isna()] = 1
+        >>> array
+        array([[ 1,  1,  2,  3,  4,  5],
+               [ 6,  1,  8,  9, 10, 11],
+               [12, 13,  1, 15, 16, 17],
+               [18, 19, 20,  1, 22, 23],
+               [24, 25, 26, 27,  1, 29]], dtype=int32)
+
+        >>> array = MaskedArray(data, masks)
+        >>> array[~array.isna()] = np.nan
+        >>> array
+        array([[nan, nan, nan, nan, nan, nan],
+               [nan, nan, nan, nan, nan, nan],
+               [nan, nan, nan, nan, nan, nan],
+               [nan, nan, nan, nan, nan, nan],
+               [nan, nan, nan, nan, nan, nan]], dtype=int32)
+
+        >>> array = MaskedArray(data, masks)
+        >>> array[[1, 3], [2, 4]] = [-1, -1]
+        >>> array
+        array([[nan, 1, 2, 3, 4, 5],
+               [6, nan, -1, 9, 10, 11],
+               [12, 13, nan, 15, 16, 17],
+               [18, 19, 20, nan, -1, 23],
+               [24, 25, 26, 27, nan, 29]], dtype=int32)
+
+        3. Subscript to a sub-array and assigned by a unbroadcastable `value`:
+
+        >>> array = MaskedArray(data, masks)
+        >>> array[1:] = np.arange(-4, 0)
+        >>> array
+        ValueError: could not broadcast input array from shape (4,) into shape
+        (4,6)
+
+        4. Subscript to a set of elements and assigned by a different-sized set
+           of scalars:
+
+        >>> array = MaskedArray(data, masks)
+        >>> array[[1, 2, 3], [2, 3, 4]] = [-1, -1]
+        >>> array
+        ValueError: shape mismatch: value array of shape (2,) could not be
+        broadcast to indexing result of shape (3,)
+
+        """
+        if np.isscalar(value):
+            # Case1: scalar value
+            if value is np.nan:
+                self._masks = self.isna()
+                self._masks[key] = True
+            else:
+                self._data[key] = value
+                if self._masks is not None:
+                    self._masks[key] = False
+        else:
+            # Case2: masked-array-like
+            self._masks = self.isna()
+            if isinstance(value, MaskedArray):
+                # Case2A: masked-array
+                data = value._data
+                masks = value._masks
+            else:
+                # Case3A: array-like
+                data = np.asarray(value)
+                masks = np.isnan(data)
+                if not masks.any():
+                    masks = None
+            self._data[key] = data
+            if masks is None:
+                self._masks[key] = False
+            else:
+                self._masks = self.isna()
+                self._masks[key] = masks
+        if self._masks is not None and not self._masks.any():
+            # set all ``False`` masks to ``None`` for better performance
+            self._masks = None
+
     def __getitem__(self, key: Any) -> Union[Any, 'MaskedArray']:
         """Subscript Operator.
 
