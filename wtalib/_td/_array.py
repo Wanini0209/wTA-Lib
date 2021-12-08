@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# pylint: disable=too-many-lines
 """Data Array.
 
 This module provides derivatives of array, which is used to store the content
@@ -177,6 +178,8 @@ class MaskedArray:
     bfill : MaskedArray
         Fill N/A elements using backward-fill method. For each N/A element,
         fill it by the next available element.
+    shift : MaskedArray
+        Shift elements along a given axis by desired positions.
 
     Examples
     --------
@@ -727,6 +730,112 @@ class MaskedArray:
         else:
             data = self._data.copy()
             masks = None
+        return MaskedArray(data, masks)
+
+    def shift(self, period: int, axis: int = 0) -> 'MaskedArray':
+        """Shift elements along a given axis by desired positions.
+
+        Parameters
+        ----------
+        period : int
+            The number of places by which elements are shifted.It could be
+            positive, negative or zero as follows:
+            1. If `period` is ``0``, it return a copy of this array directly.
+            2. If `period` is positive, it shift elements forward along given
+               axis by desired positions.
+            3. If `period` is negative, it shift elements backward along given
+               axis by desired positions.
+        axis : int
+            axis along which elements shifted.
+
+        Returns
+        -------
+        MaskedArray
+            A copy of the masked-array with elements shifted along given axis
+            by desired positions.
+
+        Examples
+        --------
+        >>> data = np.arange(24).reshape((4,6))
+        >>> masks = data % 7 == 0
+        >>> array = MaskedArray(data, masks)
+        >>> array
+        array([[nan, 1, 2, 3, 4, 5],
+               [6, nan, 8, 9, 10, 11],
+               [12, 13, nan, 15, 16, 17],
+               [18, 19, 20, nan, 22, 23]], dtype=int32)
+
+        1. zero `period`:
+
+        >>> array.shift(0)
+        array([[nan, 1, 2, 3, 4, 5],
+               [6, nan, 8, 9, 10, 11],
+               [12, 13, nan, 15, 16, 17],
+               [18, 19, 20, nan, 22, 23]], dtype=int32)
+
+        2. positive `period`:
+
+        >>> array.shift(2)
+        array([[nan, nan, nan, nan, nan, nan],
+               [nan, nan, nan, nan, nan, nan],
+               [nan, 1, 2, 3, 4, 5],
+               [6, nan, 8, 9, 10, 11]], dtype=int32)
+
+        >>> array.shift(2, axis=0)
+        array([[nan, nan, nan, nan, nan, nan],
+               [nan, nan, nan, nan, nan, nan],
+               [nan, 1, 2, 3, 4, 5],
+               [6, nan, 8, 9, 10, 11]], dtype=int32)
+
+        >>> array.shift(2, axis=1)
+        array([[nan, nan, nan, 1, 2, 3],
+               [nan, nan, 6, nan, 8, 9],
+               [nan, nan, 12, 13, nan, 15],
+               [nan, nan, 18, 19, 20, nan]], dtype=int32)
+
+        3. negative `period`:
+
+        >>> array.shift(-2)
+        array([[12, 13, nan, 15, 16, 17],
+               [18, 19, 20, nan, 22, 23],
+               [nan, nan, nan, nan, nan, nan],
+               [nan, nan, nan, nan, nan, nan]], dtype=int32)
+
+        >>> array.shift(-2, axis=0)
+        array([[12, 13, nan, 15, 16, 17],
+               [18, 19, 20, nan, 22, 23],
+               [nan, nan, nan, nan, nan, nan],
+               [nan, nan, nan, nan, nan, nan]], dtype=int32)
+
+        >>> array.shift(-2, axis=1)
+        array([[2, 3, 4, 5, nan, nan],
+               [8, 9, 10, 11, nan, nan],
+               [nan, 15, 16, 17, nan, nan],
+               [20, nan, 22, 23, nan, nan]], dtype=int32)
+
+        4. `axis` out of bounds:
+
+        >>> array.shift(2, axis=2)
+        AxisError: axis 2 is out of bounds for array of dimension 2
+
+        See Also
+        --------
+        numpy.roll
+
+        """
+        if not isinstance(period, int):
+            raise TypeError("'period' must be 'int' not '%s'"
+                            % type(period).__name__)
+        if period == 0:
+            return MaskedArray(self._data, self._masks)
+        data = np.roll(self._data, period, axis)
+        masks = np.roll(self.isna(), period, axis)
+        idxs = [slice(None, None, None)] * axis
+        if period > 0:
+            idxs.append(slice(None, period))
+        else:
+            idxs.append(slice(period, None))
+        masks[tuple(idxs)] = True
         return MaskedArray(data, masks)
 
     def __getitem__(self, key: Any) -> Union[Any, 'MaskedArray']:

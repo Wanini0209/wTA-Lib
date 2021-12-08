@@ -2,6 +2,7 @@
 """Unit-Tests related to `MaskedArray`."""
 
 import numpy as np
+import pytest
 
 from .._context import MaskedArray, array_equal
 
@@ -556,6 +557,83 @@ class TestBfill:
         """
         result = MaskedArray([1, 2, 3, 4], [True, False, True, False]).bfill()
         answer = MaskedArray([2, 2, 4, 4])
+        assert result.equals(answer)
+
+
+class TestShift:
+    """Tests related to `shift` of `MaskedArray`.
+
+    """
+    _TEST_DATA = np.arange(30).reshape((5, 6))
+    _TEST_MASKS = _TEST_DATA % 7 == 0
+
+    def test_with_non_integer_period(self):
+        """Should raise `TypeError`."""
+        array = MaskedArray(self._TEST_DATA, self._TEST_MASKS)
+        with pytest.raises(TypeError):
+            _ = array.shift(0.)
+
+    def test_with_axis_out_of_bounds(self):
+        """Should raise NumPy's `AxisError`."""
+        array = MaskedArray(self._TEST_DATA, self._TEST_MASKS)
+        with pytest.raises(np.AxisError):
+            _ = array.shift(1, axis=2)
+
+    def test_with_zero_period(self):
+        """Should return a copy of the calling object."""
+        array = MaskedArray(self._TEST_DATA, self._TEST_MASKS)
+        result = array.shift(0)
+        cond_1 = result.equals(array)
+        cond_2 = array is not result
+        assert cond_1 and cond_2
+
+    def test_default_axis(self):
+        """Should return equal result as setting axis to ``0``."""
+        array = MaskedArray(self._TEST_DATA, self._TEST_MASKS)
+        cond_1 = array.shift(2).equals(array.shift(2, axis=0))
+        cond_2 = array.shift(-2).equals(array.shift(-2, axis=0))
+        assert cond_1 & cond_2
+
+    def test_with_positive_period_on_first_axis(self):
+        """Should return a masked-array with expected contents."""
+        array = MaskedArray(self._TEST_DATA, self._TEST_MASKS)
+        result = array.shift(2, axis=0)
+        # generate answer
+        data = np.roll(self._TEST_DATA, 2, axis=0)
+        masks = np.concatenate([np.full((2, 6), True), self._TEST_MASKS[:-2]])
+        answer = MaskedArray(data, masks)
+        assert result.equals(answer)
+
+    def test_with_positive_period_on_second_axis(self):
+        """Should return a masked-array with expected contents."""
+        array = MaskedArray(self._TEST_DATA, self._TEST_MASKS)
+        result = array.shift(2, axis=1)
+        # generate answer
+        data = np.roll(self._TEST_DATA, 2, axis=1)
+        masks = np.concatenate([np.full((5, 2), True),
+                                self._TEST_MASKS[:, :-2]], axis=1)
+        answer = MaskedArray(data, masks)
+        assert result.equals(answer)
+
+    def test_with_negative_period_on_first_axis(self):
+        """Should return a masked-array with expected contents."""
+        array = MaskedArray(self._TEST_DATA, self._TEST_MASKS)
+        result = array.shift(-2, axis=0)
+        # generate answer
+        data = np.roll(self._TEST_DATA, -2, axis=0)
+        masks = np.concatenate([self._TEST_MASKS[2:], np.full((2, 6), True)])
+        answer = MaskedArray(data, masks)
+        assert result.equals(answer)
+
+    def test_with_negative_period_on_second_axis(self):
+        """Should return a masked-array with expected contents."""
+        array = MaskedArray(self._TEST_DATA, self._TEST_MASKS)
+        result = array.shift(-2, axis=1)
+        # generate answer
+        data = np.roll(self._TEST_DATA, -2, axis=1)
+        masks = np.concatenate([self._TEST_MASKS[:, 2:],
+                                np.full((5, 2), True)], axis=1)
+        answer = MaskedArray(data, masks)
         assert result.equals(answer)
 
 
