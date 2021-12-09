@@ -9,6 +9,13 @@ from .._context import MaskedArray, array_equal
 # pylint: disable=no-self-use, too-few-public-methods
 
 
+def _product_of_tuple(values: tuple):
+    ret = 1
+    for each in values:
+        ret *= each
+    return ret
+
+
 class TestMaskedArray:
     """Tests related to builder of `MaskedArray`.
 
@@ -777,3 +784,98 @@ class TestSetitem:
         answer_m = MaskedArray(data, np.full(data.shape, True))
         cond_2 = array_m.equals(answer_m)
         assert cond_1 and cond_2
+
+
+class TestMovingSampling:
+    """Tests related to `moving_sampling` of `MaskedArray`.
+
+    """
+    def test_with_non_integer_samples(self):
+        """Should raise `TypeError`."""
+        array = MaskedArray(np.arange(10))
+        with pytest.raises(TypeError):
+            _ = array.moving_sampling(2., 1)
+
+    def test_with_zero_integer_samples(self):
+        """Should raise `ValueError`."""
+        array = MaskedArray(np.arange(10))
+        with pytest.raises(ValueError):
+            _ = array.moving_sampling(0, 1)
+
+    def test_with_negative_integer_samples(self):
+        """Should raise `ValueError`."""
+        array = MaskedArray(np.arange(10))
+        with pytest.raises(ValueError):
+            _ = array.moving_sampling(-1, 1)
+
+    def test_with_sample_equal_to_one(self):
+        """Should raise `ValueError`."""
+        array = MaskedArray(np.arange(10))
+        with pytest.raises(ValueError):
+            _ = array.moving_sampling(1, 1)
+
+    def test_non_integer_step(self):
+        """Should raise `TypeError`."""
+        array = MaskedArray(np.arange(10))
+        with pytest.raises(TypeError):
+            _ = array.moving_sampling(2, 1.)
+
+    def test_with_zero_integer_step(self):
+        """Should raise `ValueError`."""
+        array = MaskedArray(np.arange(10))
+        with pytest.raises(ValueError):
+            _ = array.moving_sampling(2, 0)
+
+    def test_with_non_integer_axis(self):
+        """Should raise `TypeError`."""
+        array = MaskedArray(np.arange(10))
+        with pytest.raises(TypeError):
+            _ = array.moving_sampling(2, 1, axis=0.)
+
+    def test_with_negative_integer_axis(self):
+        """Should raise `ValueError`."""
+        array = MaskedArray(np.arange(10))
+        with pytest.raises(ValueError):
+            _ = array.moving_sampling(2, 1, axis=-1)
+
+    def test_with_axis_out_of_bounds(self):
+        """Should raise Numpy's `AxisError`."""
+        array = MaskedArray(np.arange(10).reshape(5, 2))
+        with pytest.raises(np.AxisError):
+            _ = array.moving_sampling(2, 1, axis=2)
+
+    @pytest.mark.parametrize('axis', [0, 1, 2])
+    def test_with_positive_step(self, axis):
+        """Return an instance of `MaskedArray` with expected contents."""
+        shape = (4, 5, 6)
+        values = np.arange(120).reshape(shape)
+        masks = values % 7 == 0
+        result = MaskedArray(values, masks).moving_sampling(3, 2, axis=axis)
+        # generate answer
+        offset = _product_of_tuple(shape[axis + 1:])
+        base = values[tuple([slice(None, None)] * axis + [0])]
+        values = np.array([np.array([base, base + 2 * offset, base + 4 * offset]
+                                    ) + offset * idx
+                           for idx in range(shape[axis])])
+        masks = (values - values[0, 0]) // offset >= shape[axis]
+        masks |= (values % 7 == 0)
+        answer = MaskedArray(values, masks)
+        assert result.equals(answer)
+
+    @pytest.mark.parametrize('axis', [0, 1, 2])
+    def test_with_negative_step(self, axis):
+        """Return an instance of `MaskedArray` with expected contents."""
+        shape = (4, 5, 6)
+        values = np.arange(120).reshape(shape)
+        masks = values % 7 == 0
+        result = MaskedArray(values, masks).moving_sampling(3, -2, axis=axis)
+        # generate answer
+        offset = _product_of_tuple(shape[axis + 1:])
+        base = values[tuple([slice(None, None)] * axis + [0])]
+        values = np.array([np.array([base - 4 * offset, base - 2 * offset, base]
+                                    ) + offset * idx
+                           for idx in range(shape[axis])])
+        masks = (values - values[-1, -1]) // offset <= -shape[axis]
+        masks |= (values % 7 == 0)
+        answer = MaskedArray(values, masks)
+        assert result.equals(answer)

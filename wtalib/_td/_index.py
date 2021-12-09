@@ -27,6 +27,7 @@ class _IndexGroupByTimeUnit:
     Methods
     -------
     shift : Shift given values along the index by given period.
+    sampling : Get moving samples of values along the index by desired step.
 
     Notes
     -----
@@ -74,6 +75,44 @@ class _IndexGroupByTimeUnit:
             ret[self._begin_idx[period]:] = np.nan
         return ret
 
+    def sampling(self, values: MaskedArray, samples: int, step: int
+                 ) -> MaskedArray:
+        """Get moving samples along the index by desired step.
+
+        Parameters
+        ----------
+        values : MaskedArray
+            A data array has equal length of the index.
+        samples : int
+            Number of samples.
+        step : int
+            Number of step between each sample. It could be positive or
+            negative but not be zero. If `step` is set as a positive integer,
+            n, it get samples forward per n units along the index. If `step` is
+            set as a negative integer, -n, it get samples backward per n units
+            along the index.
+
+        Returns
+        -------
+        MaskedArray
+            An extended masked-array which 1st dimension is equal to the 1st
+            dimension of `values` and the 2nd dimension is equal to `samples`.
+            The rest dimensions are equal to which of `values`. For example, if
+            the shape of `values` is ``(m, n)`` and `samples` is `k`, the shape
+            of result is ``(m, k, n)``.
+
+        """
+        # Only used in current module, ignore length checking and value checking
+        if step > 0:
+            ret = values[self._begin_idx
+                         ].moving_sampling(samples, step)[self._group_id]
+            ret[:, 0] = values
+        else:
+            ret = values[self._end_idx
+                         ].moving_sampling(samples, step)[self._group_id]
+            ret[:, -1] = values
+        return ret
+
 
 class TimeIndex:
     """Time-Index.
@@ -116,6 +155,8 @@ class TimeIndex:
         Determine if two time-index are equal.
     argsort: numpy.array
         Return the indices that would sort the time-index.
+    sampling : MaskedArray
+        Get moving samples of values along the time-index by desired step.
 
     Examples
     --------
@@ -450,6 +491,191 @@ class TimeIndex:
         if punit not in self._grouper:
             self._grouper[punit] = _IndexGroupByTimeUnit(self._values, punit)
         return self._grouper[punit].shift(values, period)
+
+    def sampling(self, values: MaskedArray, samples: int, step: int,
+                 sunit: Optional[TimeUnit] = None) -> MaskedArray:
+        """Get moving samples along the time-index by desired step.
+
+        Parameters
+        ----------
+        values : MaskedArray
+            A data array has equal length of the index.
+        samples : int
+            Number of samples.
+        step : int
+            Number of step between each sample. It could be positive or
+            negative but not be zero. If `step` is set as a positive integer,
+            n, it get samples forward per n units along the time-index. If
+            `step` is set as a negative integer, -n, it get samples backward
+            per n units along the time-index.
+        sunit : TimeUnit
+            Time-unit of step.
+
+        Returns
+        -------
+        MaskedArray
+            An extended masked-array which 1st dimension is equal to the 1st
+            dimension of `values` and the 2nd dimension is equal to `samples`.
+            The rest dimensions are equal to which of `values`. For example, if
+            the shape of `values` is ``(m, n)`` and `samples` is `k`, the shape
+            of result masked-array is ``(m, k, n)``.
+
+        Examples
+        --------
+        >>> tindex = TimeIndex(['2021-11-01', '2021-11-03', '2021-11-06',
+                                '2021-11-10', '2021-11-13', '2021-11-15',
+                                '2021-11-18', '2021-11-22', '2021-11-25',
+                                '2021-11-27', '2021-11-30', '2021-12-03'])
+        >>> values = MaskedArray(np.arange(12), np.arange(12) % 5 == 0)
+        >>> values
+        array([nan, 1, 2, 3, 4, nan, 6, 7, 8, 9, nan, 11], dtype=int32)
+
+        1A. positive `step` and on specified `sunit`:
+
+        >>> tindex.sampling(values, 3, 2)
+        array([[nan, 2, 4],
+               [1, 3, nan],
+               [2, 4, 6],
+               [3, nan, 7],
+               [4, 6, 8],
+               [nan, 7, 9],
+               [6, 8, nan],
+               [7, 9, 11],
+               [8, nan, nan],
+               [9, 11, nan],
+               [nan, nan, nan],
+               [11, nan, nan]], dtype=int32)
+
+        1B. negative `step` and on specified `sunit`:
+
+        >>> tindex.sampling(values, 3, -2)
+        array([[nan, nan, nan],
+               [nan, nan, 1],
+               [nan, nan, 2],
+               [nan, 1, 3],
+               [nan, 2, 4],
+               [1, 3, nan],
+               [2, 4, 6],
+               [3, nan, 7],
+               [4, 6, 8],
+               [nan, 7, 9],
+               [6, 8, nan],
+               [7, 9, 11]], dtype=int32)
+
+        2A. positive `step` and equivalent `sunit`:
+
+        >>> tindex.sampling(values, 3, 2, TimeUnit.DAY)
+        array([[nan, 2, 4],
+               [1, 3, nan],
+               [2, 4, 6],
+               [3, nan, 7],
+               [4, 6, 8],
+               [nan, 7, 9],
+               [6, 8, nan],
+               [7, 9, 11],
+               [8, nan, nan],
+               [9, 11, nan],
+               [nan, nan, nan],
+               [11, nan, nan]], dtype=int32)
+
+        2B. negative `step` and equivalent `sunit`:
+
+        >>> tindex.sampling(values, 3, -2, TimeUnit.DAY)
+        array([[nan, nan, nan],
+               [nan, nan, 1],
+               [nan, nan, 2],
+               [nan, 1, 3],
+               [nan, 2, 4],
+               [1, 3, nan],
+               [2, 4, 6],
+               [3, nan, 7],
+               [4, 6, 8],
+               [nan, 7, 9],
+               [6, 8, nan],
+               [7, 9, 11]], dtype=int32)
+
+        3A. positive `step` and super-unit `sunit`:
+
+        >>> tindex.sampling(values, 3, 2, TimeUnit.WEEK)
+        array([[nan, nan, nan],
+               [1, nan, nan],
+               [2, nan, nan],
+               [3, 7, nan],
+               [4, 7, nan],
+               [nan, nan, nan],
+               [6, nan, nan],
+               [7, nan, nan],
+               [8, nan, nan],
+               [9, nan, nan],
+               [nan, nan, nan],
+               [11, nan, nan]], dtype=int32)
+
+        3B. negative `step` and super-unit `sunit`:
+
+        >>> tindex.sampling(values, 3, -2, TimeUnit.WEEK)
+        array([[nan, nan, nan],
+               [nan, nan, 1],
+               [nan, nan, 2],
+               [nan, nan, 3],
+               [nan, nan, 4],
+               [nan, 2, nan],
+               [nan, 2, 6],
+               [nan, 4, 7],
+               [nan, 4, 8],
+               [nan, 4, 9],
+               [2, 6, nan],
+               [2, 6, 11]], dtype=int32)
+
+        4. sub-unit `sunit`:
+
+        >>> tindex.sampling(values, 2, 1, TimeUnit.HOUR)
+        ValueError: not support sampling 'TimeUnit.HOUR' on 'datetime64[D]' datetimes
+
+        5A. non-integer `samples`:
+
+        >>> tindex.sampling(values, 2., 1)
+        TypeError: 'samples' must be 'int' not 'float'
+
+        5B. invalid `samples`:
+
+        >>> tindex.sampling(values, 1, 1)
+        ValueError: 'samples' must be larger than 1
+
+        >>> tindex.sampling(values, 0, 1)
+        ValueError: 'samples' must be larger than 1
+
+        >>> tindex.sampling(values, -1, 1)
+        ValueError: 'samples' must be larger than 1
+
+        6A. non-integer `step`:
+
+        >>> tindex.sampling(values, 2, 1.)
+        TypeError: 'step' must be 'int' not 'float'
+
+        6B. zero `step`:
+
+        >>> tindex.sampling(values, 2, 0)
+        ValueError: 'step' must be non-zero
+
+        7. invalid `sunit`:
+
+        >>> tindex.sampling(values, 2, 1, 'day')
+        TypeError: 'sunit' must be 'TimeUnit' not 'str'
+
+        """
+        # Dynamic checks for `samples` and `step` are done by `moving_sampling`
+        # in 'MaskedArray`.
+        if sunit is not None and not isinstance(sunit, TimeUnit):
+            raise TypeError("'sunit' must be 'TimeUnit' not '%s'"
+                            % type(sunit).__name__)
+        if sunit is None or sunit.isequiv(self._values.dtype):
+            return values.moving_sampling(samples, step)
+        if sunit.issub(self._values.dtype):
+            raise ValueError("not support sampling '%s' on '%s' datetimes"
+                             % (sunit, self._values.dtype.name))
+        if sunit not in self._grouper:
+            self._grouper[sunit] = _IndexGroupByTimeUnit(self._values, sunit)
+        return self._grouper[sunit].sampling(values, samples, step)
 
     def __repr__(self) -> str:
         """String representation for the time-index.
