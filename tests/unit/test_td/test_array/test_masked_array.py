@@ -272,6 +272,21 @@ class TestIsNa:
         assert array_equal(answer, array.isna())
 
 
+class TestCopy:
+    """Tests related to `MaskedArray.copy`.
+
+    """
+    def test_return_a_copy(self):
+        """Should return a copy of the calling object."""
+        data = np.arange(4)
+        masks = data % 2 == 0
+        array = MaskedArray(data, masks)
+        result = array.copy()
+        cond_1 = result is not array
+        cond_2 = result.equals(array)
+        assert cond_1 and cond_2
+
+
 class TestToNumpy:
     """Tests related to `MaskedArray.to_numpy`.
 

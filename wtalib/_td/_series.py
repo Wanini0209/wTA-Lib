@@ -153,7 +153,7 @@ class TimeSeries:
     def __init__(self, data: _MaskedArrayLike, index: _TimeIndexLike,
                  name: str, sort: bool = True):
         if isinstance(data, MaskedArray):
-            self._data = data
+            self._data = data.copy()
         else:
             self._data = MaskedArray(data)
 

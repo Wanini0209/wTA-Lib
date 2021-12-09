@@ -49,18 +49,20 @@ class TestTimeSeries:
         assert answer.equals(tseries.data)
 
     def test_with_a_masked_array_as_data_and_disabled_sort(self):
-        """Should store `data` directly, not a copy.
+        """Should store `data` as a copy.
 
         When constructing a time-series with `sort=False`, if `data` is a
-        masked-array object, it would be stored as a reference in the
-        time-series not a copy.
+        masked-array object, it would be stored as a copy.
 
         """
         data = MaskedArray([1, 2, 3, 4])
         index = TimeIndex(['2021-11-04', '2021-11-03',
                            '2021-11-02', '2021-11-01'], sort=False)
         tseries = TimeSeries(data, index, name='ts', sort=False)
-        assert data is tseries.data
+        cond_1 = data.equals(tseries.data)
+        data[0] = -1
+        cond_2 = not data.equals(tseries.data)
+        assert cond_1 and cond_2
 
     def test_with_a_array_like_as_data(self):
         """Should store `data` as a masked-arry sorted by `index`.
@@ -607,21 +609,6 @@ class TestDropNa:
         result = TimeSeries(data, index, 'ts').dropna()
         answer = TimeSeries([2, 4], ['2021-11-02', '2021-11-04'], 'ts')
         assert result.equals(answer)
-
-    def test_on_timeseries_without_na_elements(self):
-        """Return a copy of the time-series.
-
-        When calling `dropna` method of a `TimeSeries` instance which contains
-        no N/A element, it should return a copy of the calling object with which
-        shared `data` and `index`.
-
-        """
-        index = ['2021-11-01', '2021-11-02', '2021-11-03', '2021-11-04']
-        tseries = TimeSeries([1, 2, 3, 4], index, 'ts')
-        result = tseries.dropna()
-        cond_1 = tseries.index is result.index
-        cond_2 = tseries.data is result.data
-        assert cond_1 and cond_2
 
 
 class TestToPandas:

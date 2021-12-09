@@ -198,6 +198,8 @@ class MaskedArray:
         of N/A elements are replaced with ``numpy.nan``.
     equals : bool
         Determine whether two masked-arrays contain the same elements.
+    copy : MaskedArray
+        Return a copy of this masked-array.
     fillna : MaskedArray
         Fill N/A elements using given value.
     ffill : MaskedArray
@@ -591,6 +593,15 @@ class MaskedArray:
             # pylint: enable=invalid-unary-operand-type, protected-access
             return cond_1 and cond_2
         return False
+
+    @classmethod
+    def _make(cls, data: ArrayLike, masks: Optional[ArrayLike] = None
+              ) -> 'MaskedArray':
+        return cls(data, masks)
+
+    def copy(self) -> 'MaskedArray':
+        """Return a copy of the masked-array."""
+        return self._make(self._data, self._masks)
 
     def fillna(self, value: Any) -> 'MaskedArray':
         """Fill N/A elements using the given value.
