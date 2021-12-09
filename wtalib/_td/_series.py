@@ -9,12 +9,13 @@ Classes
 BooleanTimeSeries : A time-series of boolean data.
 NumericTimeSeries : A time-series of numeric data.
 TimeSeries : A sequence of data points indexed by time.
+TimeSeriesRolling : Rolling group of time-series.
 TimeSeriesSampling : Moving samples of time-series.
 
 """
 
 import datetime
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 import pandas as pd
@@ -103,6 +104,8 @@ class TimeSeries:
         Remove N/A elements.
     shift : TimeSeries
         Shift index by desired number of periods with given time-unit.
+    rolling : TimeSeriesRolling
+        Get rolling group of the time-series along the index by desired period.
     sampling : TimeSeriesSampling
         Get moving samples along the index by desired step.
 
@@ -795,6 +798,248 @@ class TimeSeries:
             name = f'{self._name}.shift({period}, {punit.name})'
         return self._make(data, self._index, name)
 
+    def rolling(self, period: int, punit: Optional[TimeUnit] = None
+                ) -> 'TimeSeriesRolling':
+        """Get rolling group of the time-series along the index by desired period.
+
+        Parameters
+        ----------
+        period : int
+            Number of positions or units, which specified by `punit` for a
+            group. Can be positive or negative but not zero. If `period` is
+            set as a positive integer, p, it groups the time-series forward per
+            p positions or units along the index. If `period` is set as a
+            negative integer, -p, it groups the time-series backward per p
+            postions or units along the index.
+        punit : TimeUnit, optional
+            It is optional. It it is specified, it must be an instance of
+            `TimeUnit` which is a super-unit of or equivalent to the dtype of
+            the index.
+
+        Returns
+        -------
+        TimeSeriesRolling
+
+        See Also
+        --------
+        TimeIndex.rolling, TimeSeriesRolling.
+
+
+        Examples
+        --------
+        >>> dates = (['2021-11-01', '2021-11-03', '2021-11-06', '2021-11-10',
+                      '2021-11-13', '2021-11-15', '2021-11-18', '2021-11-22'])
+        >>> data = MaskedArray(np.arange(8))
+        >>> tseries = TimeSeries(data, dates, 'ts')
+
+        1A. positive `period` and no specified `punit`:
+
+        >>> tseries.rolling(3)
+        2021-11-01:	2021-11-01	0
+                    2021-11-03	1
+                    2021-11-06	2
+        2021-11-03:	2021-11-03	1
+                    2021-11-06	2
+                    2021-11-10	3
+        2021-11-06:	2021-11-06	2
+                    2021-11-10	3
+                    2021-11-13	4
+        2021-11-10:	2021-11-10	3
+                    2021-11-13	4
+                    2021-11-15	5
+        2021-11-13:	2021-11-13	4
+                    2021-11-15	5
+                    2021-11-18	6
+        2021-11-15:	2021-11-15	5
+                    2021-11-18	6
+                    2021-11-22	7
+        2021-11-18:	2021-11-18	6
+                    2021-11-22	7
+        2021-11-22:	2021-11-22	7
+        Name: ts.rolling(3), dtype: int32
+
+        1B. negative `period` and no specified `punit`:
+
+        >>> tseries.rolling(-3)
+        2021-11-01:	2021-11-01	0
+        2021-11-03:	2021-11-01	0
+                    2021-11-03	1
+        2021-11-06:	2021-11-01	0
+                    2021-11-03	1
+                    2021-11-06	2
+        2021-11-10:	2021-11-03	1
+                    2021-11-06	2
+                    2021-11-10	3
+        2021-11-13:	2021-11-06	2
+                    2021-11-10	3
+                    2021-11-13	4
+        2021-11-15:	2021-11-10	3
+                    2021-11-13	4
+                    2021-11-15	5
+        2021-11-18:	2021-11-13	4
+                    2021-11-15	5
+                    2021-11-18	6
+        2021-11-22:	2021-11-15	5
+                    2021-11-18	6
+                    2021-11-22	7
+        Name: ts.rolling(-3), dtype: int32
+
+        2A. positive `period` and equivalent `punit`:
+
+        >>> tseries.rolling(3, TimeUnit.DAY)
+        2021-11-01:	2021-11-01	0
+                    2021-11-03	1
+                    2021-11-06	2
+        2021-11-03:	2021-11-03	1
+                    2021-11-06	2
+                    2021-11-10	3
+        2021-11-06:	2021-11-06	2
+                    2021-11-10	3
+                    2021-11-13	4
+        2021-11-10:	2021-11-10	3
+                    2021-11-13	4
+                    2021-11-15	5
+        2021-11-13:	2021-11-13	4
+                    2021-11-15	5
+                    2021-11-18	6
+        2021-11-15:	2021-11-15	5
+                    2021-11-18	6
+                    2021-11-22	7
+        2021-11-18:	2021-11-18	6
+                    2021-11-22	7
+        2021-11-22:	2021-11-22	7
+        Name: ts.rolling(3, day), dtype: int32
+
+        2B. negative `period` and equivalent `punit`:
+
+        >>> tseries.rolling(-3, TimeUnit.DAY)
+        2021-11-01:	2021-11-01	0
+        2021-11-03:	2021-11-01	0
+                    2021-11-03	1
+        2021-11-06:	2021-11-01	0
+                    2021-11-03	1
+                    2021-11-06	2
+        2021-11-10:	2021-11-03	1
+                    2021-11-06	2
+                    2021-11-10	3
+        2021-11-13:	2021-11-06	2
+                    2021-11-10	3
+                    2021-11-13	4
+        2021-11-15:	2021-11-10	3
+                    2021-11-13	4
+                    2021-11-15	5
+        2021-11-18:	2021-11-13	4
+                    2021-11-15	5
+                    2021-11-18	6
+        2021-11-22:	2021-11-15	5
+                    2021-11-18	6
+                    2021-11-22	7
+        Name: ts.rolling(-3, day), dtype: int32
+
+        3A. positive `period` and super-unit `punit`:
+
+        >>> tseries.rolling(3, TimeUnit.WEEK)
+        2021-11-01:	2021-11-01	0
+                    2021-11-03	1
+                    2021-11-06	2
+                    2021-11-10	3
+                    2021-11-13	4
+                    2021-11-15	5
+                    2021-11-18	6
+        2021-11-03:	2021-11-03	1
+                    2021-11-06	2
+                    2021-11-10	3
+                    2021-11-13	4
+                    2021-11-15	5
+                    2021-11-18	6
+        2021-11-06:	2021-11-06	2
+                    2021-11-10	3
+                    2021-11-13	4
+                    2021-11-15	5
+                    2021-11-18	6
+        2021-11-10:	2021-11-10	3
+                    2021-11-13	4
+                    2021-11-15	5
+                    2021-11-18	6
+                    2021-11-22	7
+        2021-11-13:	2021-11-13	4
+                    2021-11-15	5
+                    2021-11-18	6
+                    2021-11-22	7
+        2021-11-15:	2021-11-15	5
+                    2021-11-18	6
+                    2021-11-22	7
+        2021-11-18:	2021-11-18	6
+                    2021-11-22	7
+        2021-11-22:	2021-11-22	7
+        Name: ts.rolling(3, week), dtype: int32
+
+        3B. negative `period` and super-unit `punit`:
+
+        >>> tseries.rolling(-3, TimeUnit.WEEK)
+        2021-11-01:	2021-11-01	0
+        2021-11-03:	2021-11-01	0
+                    2021-11-03	1
+        2021-11-06:	2021-11-01	0
+                    2021-11-03	1
+                    2021-11-06	2
+        2021-11-10:	2021-11-01	0
+                    2021-11-03	1
+                    2021-11-06	2
+                    2021-11-10	3
+        2021-11-13:	2021-11-01	0
+                    2021-11-03	1
+                    2021-11-06	2
+                    2021-11-10	3
+                    2021-11-13	4
+        2021-11-15:	2021-11-01	0
+                    2021-11-03	1
+                    2021-11-06	2
+                    2021-11-10	3
+                    2021-11-13	4
+                    2021-11-15	5
+        2021-11-18:	2021-11-01	0
+                    2021-11-03	1
+                    2021-11-06	2
+                    2021-11-10	3
+                    2021-11-13	4
+                    2021-11-15	5
+                    2021-11-18	6
+        2021-11-22:	2021-11-10	3
+                    2021-11-13	4
+                    2021-11-15	5
+                    2021-11-18	6
+                    2021-11-22	7
+        Name: ts.rolling(-3, week), dtype: int32
+
+        4A. sub-unit `punit`:
+
+        >>> tseries.rolling(1, TimeUnit.HOUR)
+        ValueError: not support sampling 'TimeUnit.HOUR' on 'datetime64[D]' datetimes
+
+        4B. non-integer `period`:
+
+        >>> tseries.rolling(1.)
+        TypeError: 'period' must be 'int' not 'float'
+
+        4C. zero `period`:
+
+        >>> tseries.rolling(0)
+        ValueError: 'period' can not be zero
+
+        5. invalid `punit`:
+
+        >>> tseries.rolling(1, TimeUnit.DAY.name)
+        TypeError: 'punit' must be 'TimeUnit' not 'str'
+
+        """
+        data = self._index.rolling(self._data, period, punit)
+        if punit is None:
+            name = f'{self._name}.rolling({period})'
+        else:
+            name = f'{self._name}.rolling({period}, {punit.name})'
+        return TimeSeriesRolling(data, self._index, name, period)
+
     def sampling(self, samples: int, step: int,
                  sunit: Optional[TimeUnit] = None) -> 'TimeSeriesSampling':
         """Get moving samples by desired step along the index .
@@ -1368,6 +1613,200 @@ class NumericTimeSeries(TimeSeries):
     def __le__(self, other: Union['NumericTimeSeries', float, int]
                ) -> BooleanTimeSeries:
         return self._comparison_op(other, ComparisonOperator.LE)
+
+
+class TimeSeriesRolling:
+    """Rolling-groups of time-series.
+
+    Parameters
+    ----------
+    data : List[MaskedArray]
+        The data stored in the rolling-groups of time-series. It must be a list
+        of `MaskedArray`.
+    index : TimeIndex
+        The datetime values indexing `data`.
+    name : str
+        The name given to the sampling of time-series.
+    period : int
+        The period used to build this object by `TimeSeries.rolling`.
+
+    Notes
+    -----
+    It is used as the result of `rolling` of `TimeSeries`, so ignore
+    unnecessary checks.
+
+    Methods
+    -------
+    to_dict : Dict[datetime.date, TimeSeries]
+        Return a copy of the object as a dict from datetime to time-series.
+
+    Examples
+    --------
+    >>> index = np.array(['1970-01-01', '1970-01-02', '1970-01-03',
+                          '1970-01-04', '1970-01-05', '1970-01-06',
+                          '1970-01-07', '1970-01-08'], 'datetime64')
+    >>> data = np.array([0, 1, 2, 3, 4, 5, 6, 7])
+    >>> TimeSeries(data, index, 'ts').rolling(3)
+    1970-01-01:	1970-01-01	0
+                1970-01-02	1
+                1970-01-03	2
+    1970-01-02:	1970-01-02	1
+                1970-01-03	2
+                1970-01-04	3
+    1970-01-03:	1970-01-03	2
+                1970-01-04	3
+                1970-01-05	4
+    1970-01-04:	1970-01-04	3
+                1970-01-05	4
+                1970-01-06	5
+    1970-01-05:	1970-01-05	4
+                1970-01-06	5
+                1970-01-07	6
+    1970-01-06:	1970-01-06	5
+                1970-01-07	6
+                1970-01-08	7
+    1970-01-07:	1970-01-07	6
+                1970-01-08	7
+    1970-01-08:	1970-01-08	7
+    Name: ts.rolling(3), dtype: int32
+
+    >>> TimeSeries(data, index, 'ts').rolling(-3)
+    1970-01-01:	1970-01-01	0
+    1970-01-02:	1970-01-01	0
+                1970-01-02	1
+    1970-01-03:	1970-01-01	0
+                1970-01-02	1
+                1970-01-03	2
+    1970-01-04:	1970-01-02	1
+                1970-01-03	2
+                1970-01-04	3
+    1970-01-05:	1970-01-03	2
+                1970-01-04	3
+                1970-01-05	4
+    1970-01-06:	1970-01-04	3
+                1970-01-05	4
+                1970-01-06	5
+    1970-01-07:	1970-01-05	4
+                1970-01-06	5
+                1970-01-07	6
+    1970-01-08:	1970-01-06	5
+                1970-01-07	6
+                1970-01-08	7
+    Name: ts.rolling(-3), dtype: int32
+
+    """
+    def __init__(self, data: List[MaskedArray], index: TimeIndex, name: str,
+                 period: int):
+        self._data = data
+        self._index = index
+        self._name = name
+        self._period = period
+
+    def _get_indices(self) -> List[np.ndarray]:
+        index = self._index.values
+        if self._period > 0:
+            ret = [index[idx: idx + len(each)]
+                   for idx, each in enumerate(self._data)]
+        else:
+            ret = [index[idx - len(each) + 1: idx + 1]
+                   for idx, each in enumerate(self._data)]
+        return ret
+
+    def to_dict(self) -> Dict[datetime.date, TimeSeries]:
+        """Return a copy of the object as dict of time-series.
+
+        Returns
+        -------
+        dict
+            A copy of the object as a dict from datetime to time-series.
+
+        Examples
+        --------
+        >>> index = np.array(['1970-01-01', '1970-01-02', '1970-01-03',
+                              '1970-01-04', '1970-01-05', '1970-01-06',
+                              '1970-01-07', '1970-01-08'], 'datetime64')
+        >>> data = np.array([0, 1, 2, 3, 4, 5, 6, 7])
+        >>> TimeSeries(data, index, 'ts').rolling(3).to_dict()
+        {datetime.date(1970, 1, 1): 1970-01-01	0
+         1970-01-02	1
+         1970-01-03	2
+         Name: ts.rolling(3)[1970-01-01], dtype: int32,
+         datetime.date(1970, 1, 2): 1970-01-02	1
+         1970-01-03	2
+         1970-01-04	3
+         Name: ts.rolling(3)[1970-01-02], dtype: int32,
+         datetime.date(1970, 1, 3): 1970-01-03	2
+         1970-01-04	3
+         1970-01-05	4
+         Name: ts.rolling(3)[1970-01-03], dtype: int32,
+         datetime.date(1970, 1, 4): 1970-01-04	3
+         1970-01-05	4
+         1970-01-06	5
+         Name: ts.rolling(3)[1970-01-04], dtype: int32,
+         datetime.date(1970, 1, 5): 1970-01-05	4
+         1970-01-06	5
+         1970-01-07	6
+         Name: ts.rolling(3)[1970-01-05], dtype: int32,
+         datetime.date(1970, 1, 6): 1970-01-06	5
+         1970-01-07	6
+         1970-01-08	7
+         Name: ts.rolling(3)[1970-01-06], dtype: int32,
+         datetime.date(1970, 1, 7): 1970-01-07	6
+         1970-01-08	7
+         Name: ts.rolling(3)[1970-01-07], dtype: int32,
+         datetime.date(1970, 1, 8): 1970-01-08	7
+         Name: ts.rolling(3)[1970-01-08], dtype: int32}
+
+        >>> TimeSeries(data, index, 'ts').rolling(-3).to_dict()
+        {datetime.date(1970, 1, 1): 1970-01-01	0
+         Name: ts.rolling(-3)[1970-01-01], dtype: int32,
+         datetime.date(1970, 1, 2): 1970-01-01	0
+         1970-01-02	1
+         Name: ts.rolling(-3)[1970-01-02], dtype: int32,
+         datetime.date(1970, 1, 3): 1970-01-01	0
+         1970-01-02	1
+         1970-01-03	2
+         Name: ts.rolling(-3)[1970-01-03], dtype: int32,
+         datetime.date(1970, 1, 4): 1970-01-02	1
+         1970-01-03	2
+         1970-01-04	3
+         Name: ts.rolling(-3)[1970-01-04], dtype: int32,
+         datetime.date(1970, 1, 5): 1970-01-03	2
+         1970-01-04	3
+         1970-01-05	4
+         Name: ts.rolling(-3)[1970-01-05], dtype: int32,
+         datetime.date(1970, 1, 6): 1970-01-04	3
+         1970-01-05	4
+         1970-01-06	5
+         Name: ts.rolling(-3)[1970-01-06], dtype: int32,
+         datetime.date(1970, 1, 7): 1970-01-05	4
+         1970-01-06	5
+         1970-01-07	6
+         Name: ts.rolling(-3)[1970-01-07], dtype: int32,
+         datetime.date(1970, 1, 8): 1970-01-06	5
+         1970-01-07	6
+         1970-01-08	7
+         Name: ts.rolling(-3)[1970-01-08], dtype: int32}
+
+        """
+        ret = {}
+        indices = self._get_indices()
+        for idx, date in enumerate(self._index.values.tolist()):
+            name = f'{self._name}[{date}]'
+            ret[date] = TimeSeries(self._data[idx], indices[idx], name,
+                                   sort=False)
+        return ret
+
+    def __repr__(self):
+        recv = self.to_dict()
+        ret = []
+        for date, ts_ in recv.items():
+            title = str(date)
+            sep = '\n' + ' ' * (len(title) + 2)
+            ts_ = sep.join(str(ts_).split('\n')[:-1])
+            ret.append(f'{title}:\t{ts_}')
+        ret = '\n'.join(ret) + f'\nName: {self._name}, dtype: {self._data[0].dtype}'
+        return ret
 
 
 class TimeSeriesSampling:
