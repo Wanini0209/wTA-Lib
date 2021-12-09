@@ -66,6 +66,34 @@ def array_equal(target: np.ndarray, reference: np.ndarray) -> bool:
     return True
 
 
+def _rolling_block(values: np.ndarray, rows: int, cols: int,
+                   axis: int) -> np.ndarray:
+    # Only used in current module, ignore dynamic type checking.
+    shape = (values.shape[axis] - rows * cols + 1, rows, cols
+             ) + values.shape[:axis] + values.shape[axis + 1:]
+    strides = (values.strides[axis],
+               values.strides[axis] * cols,
+               values.strides[axis]
+               ) + values.strides[:axis] + values.strides[axis + 1:]
+    ret = np.lib.stride_tricks.as_strided(values, shape=shape,
+                                          strides=strides)
+    return ret
+
+
+def _forward_sampling(values: np.ndarray, samples: int, step: int,
+                      axis: int) -> np.ndarray:
+    # Only used in current module, ignore dynamic type checking.
+    ret = _rolling_block(values, samples, step, axis)[:, :, 0]
+    return ret
+
+
+def _backward_sampling(values: np.ndarray, samples: int, step: int,
+                       axis: int) -> np.ndarray:
+    # Only used in current module, ignore dynamic type checking.
+    ret = _rolling_block(values, samples, step, axis)[:, :, -1]
+    return ret
+
+
 class ArithmeticUnaryOperator(Operator, Enum):
     """Arithmetic unary operator."""
     NEG = Operator('Negative', '-', lambda x: -x)
@@ -180,6 +208,8 @@ class MaskedArray:
         fill it by the next available element.
     shift : MaskedArray
         Shift elements along a given axis by desired positions.
+    moving_sampling: MaskedArray
+        Get moving samples by desired steps on given axis.
 
     Examples
     --------
@@ -1216,3 +1246,228 @@ class MaskedArray:
 
     def __le__(self, other: _MaskedArrayLike) -> 'MaskedArray':
         return self._numeric_binary_op(other, ComparisonOperator.LE)
+
+    def _forward_padding(self, paddings: int, axis: int = 0) -> 'MaskedArray':
+        # This method only used in this class, so ignore unnecessary checks
+        idxs = tuple([slice(None, None, None)] * axis + [slice(0, 1)])
+        shape = self.shape[:axis] + (paddings,) + self.shape[axis + 1:]
+        values = np.concatenate([self._data, np.full(shape, self._data[idxs])],
+                                axis=axis)
+        masks = np.concatenate([self.isna(), np.full(shape, True)], axis=axis)
+        return MaskedArray(values, masks)
+
+    def _backward_padding(self, paddings: int, axis: int = 0) -> 'MaskedArray':
+        # This method only used in this class, so ignore unnecessary checks
+        idxs = tuple([slice(None, None, None)] * axis + [slice(0, 1)])
+        shape = self.shape[:axis] + (paddings,) + self.shape[axis + 1:]
+        values = np.concatenate([np.full(shape, self._data[idxs]), self._data],
+                                axis=axis)
+        masks = np.concatenate([np.full(shape, True), self.isna()], axis=axis)
+        return MaskedArray(values, masks)
+
+    def _forward_sampling(self, samples: int, step: int, axis: int = 0
+                          ) -> 'MaskedArray':
+        # This method only used in this class, so ignore unnecessary checks
+        padded = self._forward_padding(samples * step - 1, axis=axis)
+        # pylint: disable=protected-access
+        values = _forward_sampling(padded._data, samples, step, axis=axis)
+        masks = _forward_sampling(padded.isna(), samples, step, axis=axis)
+        # pylint: enable=protected-access
+        return MaskedArray(values, masks)
+
+    def _backward_sampling(self, samples: int, step: int, axis: int = 0
+                           ) -> 'MaskedArray':
+        # This method only used in this class, so ignore unnecessary checks
+        padded = self._backward_padding(samples * step - 1, axis=axis)
+        # pylint: disable=protected-access
+        values = _backward_sampling(padded._data, samples, step, axis=axis)
+        masks = _backward_sampling(padded.isna(), samples, step, axis=axis)
+        # pylint: enable=protected-access
+        return MaskedArray(values, masks)
+
+    def moving_sampling(self, samples: int, step: int, axis: int = 0
+                        ) -> 'MaskedArray':
+        """Get moving samples by desired step on given axis.
+
+        Parameters
+        ----------
+        samples : int
+            Number of samples.
+        step : int
+            Number of step between each sample. It could be positive or
+            negative but not be zero. If `step` is set as a positive integer,
+            n, it get samples forward per n positions. If `step` is set as a
+            negative integer, -n, it get samples backward per n positions.
+        axis : int
+            Axis along which elements are sampled movingly.
+
+        Returns
+        -------
+        MaskedArray
+            An extended masked-array which 1st dimension is equal to the
+            dimension of `values` on given `axis` and the 2nd dimension is
+            equal to `samples`. If the dimension of `values` is more than one,
+            then the rest dimensions are equal to which of `values`.
+            For example, if the shape of `values` is ``(m, n, r)`` and `samples`
+            is `k`, then
+            1. `axis` is ``0``(default), the shape of result is ``(m, k, n, r)``.
+            2. `axis` is ``1``, the shape of result is ``(n, k, m, r)``.
+            3. `axis` is ``2``, the shape of result is ``(r, k, m, n)``.
+
+        Examples
+        --------
+        >>> values = np.arange(30).reshape((6, 5))
+        >>> masks = values % 11 == 0
+        >>> array = MaskedArray(values, masks)
+        >>> array
+        array([[nan, 1, 2, 3, 4],
+               [5, 6, 7, 8, 9],
+               [10, nan, 12, 13, 14],
+               [15, 16, 17, 18, 19],
+               [20, 21, nan, 23, 24],
+               [25, 26, 27, 28, 29]], dtype=int32)
+
+        1. positive `step`:
+
+        >>> array.moving_sampling(3, 2)
+        array([[[nan, 1, 2, 3, 4],
+                [10, nan, 12, 13, 14],
+                [20, 21, nan, 23, 24]],
+
+               [[5, 6, 7, 8, 9],
+                [15, 16, 17, 18, 19],
+                [25, 26, 27, 28, 29]],
+
+               [[10, nan, 12, 13, 14],
+                [20, 21, nan, 23, 24],
+                [nan, nan, nan, nan, nan]],
+
+               [[15, 16, 17, 18, 19],
+                [25, 26, 27, 28, 29],
+                [nan, nan, nan, nan, nan]],
+
+               [[20, 21, nan, 23, 24],
+                [nan, nan, nan, nan, nan],
+                [nan, nan, nan, nan, nan]],
+
+               [[25, 26, 27, 28, 29],
+                [nan, nan, nan, nan, nan],
+                [nan, nan, nan, nan, nan]]], dtype=int32)
+
+        >>> array.moving_sampling(3, 2, axis=1)
+        array([[[nan, 5, 10, 15, 20, 25],
+                [2, 7, 12, 17, nan, 27],
+                [4, 9, 14, 19, 24, 29]],
+
+               [[1, 6, nan, 16, 21, 26],
+                [3, 8, 13, 18, 23, 28],
+                [nan, nan, nan, nan, nan, nan]],
+
+               [[2, 7, 12, 17, nan, 27],
+                [4, 9, 14, 19, 24, 29],
+                [nan, nan, nan, nan, nan, nan]],
+
+               [[3, 8, 13, 18, 23, 28],
+                [nan, nan, nan, nan, nan, nan],
+                [nan, nan, nan, nan, nan, nan]],
+
+               [[4, 9, 14, 19, 24, 29],
+                [nan, nan, nan, nan, nan, nan],
+                [nan, nan, nan, nan, nan, nan]]], dtype=int32)
+
+        2. negative `step`:
+
+        >>> array.moving_sampling(3, -2)
+        array([[[nan, nan, nan, nan, nan],
+                [nan, nan, nan, nan, nan],
+                [nan, 1, 2, 3, 4]],
+
+               [[nan, nan, nan, nan, nan],
+                [nan, nan, nan, nan, nan],
+                [5, 6, 7, 8, 9]],
+
+               [[nan, nan, nan, nan, nan],
+                [nan, 1, 2, 3, 4],
+                [10, nan, 12, 13, 14]],
+
+               [[nan, nan, nan, nan, nan],
+                [5, 6, 7, 8, 9],
+                [15, 16, 17, 18, 19]],
+
+               [[nan, 1, 2, 3, 4],
+                [10, nan, 12, 13, 14],
+                [20, 21, nan, 23, 24]],
+
+               [[5, 6, 7, 8, 9],
+                [15, 16, 17, 18, 19],
+                [25, 26, 27, 28, 29]]], dtype=int32)
+
+        >>> array.moving_sampling(3, -2, axis=1)
+        array([[[nan, nan, nan, nan, nan, nan],
+                [nan, nan, nan, nan, nan, nan],
+                [nan, 5, 10, 15, 20, 25]],
+
+               [[nan, nan, nan, nan, nan, nan],
+                [nan, nan, nan, nan, nan, nan],
+                [1, 6, nan, 16, 21, 26]],
+
+               [[nan, nan, nan, nan, nan, nan],
+                [nan, 5, 10, 15, 20, 25],
+                [2, 7, 12, 17, nan, 27]],
+
+               [[nan, nan, nan, nan, nan, nan],
+                [1, 6, nan, 16, 21, 26],
+                [3, 8, 13, 18, 23, 28]],
+
+               [[nan, 5, 10, 15, 20, 25],
+                [2, 7, 12, 17, nan, 27],
+                [4, 9, 14, 19, 24, 29]]], dtype=int32)
+
+        3. invalid `samples`:
+
+        >>> array.moving_sampling(2., 1)
+        TypeError: 'samples' must be 'int' not 'float'
+
+        >>> array.moving_sampling(1, 1)
+        ValueError: 'samples' must be larger than 1
+
+        4. invalid `step`:
+
+        >>> array.moving_sampling(2, 1.)
+        TypeError: 'step' must be 'int' not 'float'
+
+        >>> array.moving_sampling(2, 0)
+        ValueError: 'step' must be non-zero
+
+        5. invalid `axis`:
+
+        >>> array.moving_sampling(2, 1, axis=0.)
+        TypeError: 'axis' must be 'int' not 'float'
+
+        >>> array.moving_sampling(2, 1, axis=-1)
+        ValueError: 'axis' must be non-negative
+
+        >>> array.moving_sampling(2, 1, axis=2)
+        AxisError: axis 2 is out of bounds for array of dimension 2
+
+        """
+        if not isinstance(samples, int):
+            raise TypeError("'samples' must be 'int' not '%s'"
+                            % type(samples).__name__)
+        if not isinstance(step, int):
+            raise TypeError("'step' must be 'int' not '%s'"
+                            % type(step).__name__)
+        if not isinstance(axis, int):
+            raise TypeError("'axis' must be 'int' not '%s'"
+                            % type(axis).__name__)
+        if samples <= 1:
+            raise ValueError("'samples' must be larger than 1")
+        if axis < 0:
+            raise ValueError("'axis' must be non-negative")
+        if axis >= self.ndim:
+            raise np.AxisError(axis, self.ndim)
+        if step > 0:
+            return self._forward_sampling(samples, step, axis)
+        if step < 0:
+            return self._backward_sampling(samples, -step, axis)
+        raise ValueError("'step' must be non-zero")
