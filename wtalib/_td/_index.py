@@ -7,7 +7,7 @@ current package.
 """
 
 import datetime
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 from numpy.typing import ArrayLike
@@ -27,6 +27,7 @@ class _IndexGroupByTimeUnit:
     Methods
     -------
     shift : Shift given values along the index by given period.
+    rolling: Get rolling group of values along the index by desired period.
     sampling : Get moving samples of values along the index by desired step.
 
     Notes
@@ -73,6 +74,46 @@ class _IndexGroupByTimeUnit:
             ret[:self._begin_idx[period]] = np.nan
         else:
             ret[self._begin_idx[period]:] = np.nan
+        return ret
+
+    def rolling(self, values: MaskedArray, period: int) -> List[MaskedArray]:
+        """Get rolling group of given values along the index by desired period.
+
+        Parameters
+        ----------
+        values : MaskedArray
+            A data array has equal length of the index.
+        period : int
+            Number of units in each rolling group. It could be positive or
+            negative but not be zero. If `period` is set as a positive integer,
+            n, it rollingly group `values` forward per n units along the index.
+            If `period` is set as a negative integer, -n, it rollingly group
+            `values` backward per n units along the index.
+
+        Returns
+        -------
+        List[MaskedArray]
+
+        """
+        # Only used in current module, ignore length checking and value checking
+        if period > 0:
+            # group forward
+            sidxs = np.arange(len(values))
+            eidxs = self._end_idx + 1
+            if period > 1:
+                offset = period - 1
+                eidxs = np.concatenate([eidxs[offset:],
+                                        np.full(offset, eidxs[-1])])
+            eidxs = eidxs[self._group_id]
+        else:
+            # group backward
+            eidxs = np.arange(1, len(values) + 1)
+            sidxs = self._begin_idx
+            if period < -1:
+                offset = -period - 1
+                sidxs = np.concatenate([np.full(offset, 0), sidxs])
+            sidxs = sidxs[self._group_id]
+        ret = [values[sidx:eidx] for sidx, eidx in zip(sidxs, eidxs)]
         return ret
 
     def sampling(self, values: MaskedArray, samples: int, step: int
@@ -155,6 +196,8 @@ class TimeIndex:
         Return the indices that would sort the time-index.
     shift : MaskedArray
         Shift values equivalent to the time-index shifted by desired period.
+    rolling: List[MaskedArray]
+        Get rolling group of values along the time-index by desired period.
     sampling : MaskedArray
         Get moving samples of values along the time-index by desired step.
 
@@ -491,6 +534,156 @@ class TimeIndex:
         if punit not in self._grouper:
             self._grouper[punit] = _IndexGroupByTimeUnit(self._values, punit)
         return self._grouper[punit].shift(values, period)
+
+    def rolling(self, values: MaskedArray, period: int,
+                punit: Optional[TimeUnit] = None) -> List[MaskedArray]:
+        """Get rolling group of values along the time-index by desired period.
+
+        Parameters
+        ----------
+        values : MaskedArray
+            A data array has equal length of the index.
+        period : int
+            Number of positions or units in each rolling group. It could be
+            positive or negative but not be zero. If `period` is set as a
+            positive integer, n, it rollingly group `values` forward per n
+            positions or units along the time-index. If `period` is set as a
+            negative integer, -n, it rollingly group `values` backward per n
+            positions or units along the time-index.
+        punit : TimeUnit
+            Time-unit of period.
+
+        Returns
+        -------
+        List[MaskedArray]
+
+        Examples
+        --------
+        >>> tindex = TimeIndex(['2021-11-01', '2021-11-03', '2021-11-06',
+                                '2021-11-10', '2021-11-13', '2021-11-15',
+                                '2021-11-18', '2021-11-22', '2021-11-25'])
+        >>> values = MaskedArray(np.arange(9))
+        >>> values
+        array([0, 1, 2, 3, 4, 5, 6, 7, 8], dtype=int32)
+
+        1A. positive `period` and no specified `punit`:
+
+        >>> tindex.rolling(values, 3)
+        [array([0, 1, 2], dtype=int32),
+         array([1, 2, 3], dtype=int32),
+         array([2, 3, 4], dtype=int32),
+         array([3, 4, 5], dtype=int32),
+         array([4, 5, 6], dtype=int32),
+         array([5, 6, 7], dtype=int32),
+         array([6, 7, 8], dtype=int32),
+         array([7, 8], dtype=int32),
+         array([8], dtype=int32)]
+
+        1B. negative `period` and no specified `punit`:
+
+        >>> tindex.rolling(values, -3)
+        [array([0], dtype=int32),
+         array([0, 1], dtype=int32),
+         array([0, 1, 2], dtype=int32),
+         array([1, 2, 3], dtype=int32),
+         array([2, 3, 4], dtype=int32),
+         array([3, 4, 5], dtype=int32),
+         array([4, 5, 6], dtype=int32),
+         array([5, 6, 7], dtype=int32),
+         array([6, 7, 8], dtype=int32)]
+
+        2A. positive `period` and equivalent `punit`:
+
+        >>> tindex.rolling(values, 3, TimeUnit.DAY)
+        [array([0, 1, 2], dtype=int32),
+         array([1, 2, 3], dtype=int32),
+         array([2, 3, 4], dtype=int32),
+         array([3, 4, 5], dtype=int32),
+         array([4, 5, 6], dtype=int32),
+         array([5, 6, 7], dtype=int32),
+         array([6, 7, 8], dtype=int32),
+         array([7, 8], dtype=int32),
+         array([8], dtype=int32)]
+
+        2B. negative `period` and equivalent `punit`:
+
+        >>> tindex.rolling(values, -3, TimeUnit.DAY)
+        [array([0], dtype=int32),
+         array([0, 1], dtype=int32),
+         array([0, 1, 2], dtype=int32),
+         array([1, 2, 3], dtype=int32),
+         array([2, 3, 4], dtype=int32),
+         array([3, 4, 5], dtype=int32),
+         array([4, 5, 6], dtype=int32),
+         array([5, 6, 7], dtype=int32),
+         array([6, 7, 8], dtype=int32)]
+
+        3A. positive `period` and super-unit `punit`:
+
+        >>> tindex.rolling(values, 3, TimeUnit.WEEK)
+        [array([0, 1, 2, 3, 4, 5, 6], dtype=int32),
+         array([1, 2, 3, 4, 5, 6], dtype=int32),
+         array([2, 3, 4, 5, 6], dtype=int32),
+         array([3, 4, 5, 6, 7, 8], dtype=int32),
+         array([4, 5, 6, 7, 8], dtype=int32),
+         array([5, 6, 7, 8], dtype=int32),
+         array([6, 7, 8], dtype=int32),
+         array([7, 8], dtype=int32),
+         array([8], dtype=int32)]
+
+        3B. negative `period` and super-unit `punit`:
+
+        >>> tindex.rolling(values, -3, TimeUnit.WEEK)
+        [array([0], dtype=int32),
+         array([0, 1], dtype=int32),
+         array([0, 1, 2], dtype=int32),
+         array([0, 1, 2, 3], dtype=int32),
+         array([0, 1, 2, 3, 4], dtype=int32),
+         array([0, 1, 2, 3, 4, 5], dtype=int32),
+         array([0, 1, 2, 3, 4, 5, 6], dtype=int32),
+         array([3, 4, 5, 6, 7], dtype=int32),
+         array([3, 4, 5, 6, 7, 8], dtype=int32)]
+
+        4A. sub-unit `punit`:
+
+        >>> tindex.rolling(values, 1, TimeUnit.HOUR)
+        ValueError: not support sampling 'TimeUnit.HOUR' on 'datetime64[D]' datetimes
+
+        4B. non-integer `period`:
+
+        >>> tindex.rolling(values, 1.)
+        TypeError: 'period' must be 'int' not 'float'
+
+        4C. zero `period`:
+
+        >>> tindex.rolling(values, 0)
+        ValueError: 'period' can not be zero
+
+        """
+        if not isinstance(period, int):
+            raise TypeError("'period' must be 'int' not '%s'"
+                            % type(period).__name__)
+        if period == 0:
+            raise ValueError("'period' can not be zero")
+        if punit is not None and not isinstance(punit, TimeUnit):
+            raise TypeError("'punit' must be 'TimeUnit' not '%s'"
+                            % type(punit).__name__)
+        if punit is None or punit.isequiv(self._values.dtype):
+            if period > 0:
+                ret = list(values.moving_sampling(period, 1))
+                for i in range(-period, 0):
+                    ret[i] = ret[i][:-i]
+            else:
+                ret = list(values.moving_sampling(-period, -1))
+                for i in range(0, -period):
+                    ret[i] = ret[i][-(i + 1):]
+            return ret
+        if punit.issub(self._values.dtype):
+            raise ValueError("not support sampling '%s' on '%s' datetimes"
+                             % (punit, self._values.dtype.name))
+        if punit not in self._grouper:
+            self._grouper[punit] = _IndexGroupByTimeUnit(self._values, punit)
+        return self._grouper[punit].rolling(values, period)
 
     def sampling(self, values: MaskedArray, samples: int, step: int,
                  sunit: Optional[TimeUnit] = None) -> MaskedArray:
