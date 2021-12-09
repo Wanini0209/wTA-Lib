@@ -25,6 +25,7 @@ from wtalib._td._series import (  # noqa: E402, F401
     BooleanTimeSeries,
     NumericTimeSeries,
     TimeSeries,
+    TimeSeriesSampling,
 )
 from wtalib._td._unit import TimeUnit  # noqa: E402, F401
 

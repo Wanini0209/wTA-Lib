@@ -9,10 +9,12 @@ Classes
 BooleanTimeSeries : A time-series of boolean data.
 NumericTimeSeries : A time-series of numeric data.
 TimeSeries : A sequence of data points indexed by time.
+TimeSeriesSampling : Moving samples of time-series.
 
 """
 
-from typing import Any, Optional, Union
+import datetime
+from typing import Any, Dict, Optional, Union
 
 import numpy as np
 import pandas as pd
@@ -101,6 +103,8 @@ class TimeSeries:
         Remove N/A elements.
     shift :
         Shift index by desired number of periods with given time-unit.
+    sampling : TimeSeriesSampling
+        Get moving samples along the index by desired step.
 
     Examples
     --------
@@ -791,6 +795,237 @@ class TimeSeries:
             name = f'{self._name}.shift({period}, {punit.name})'
         return self._make(data, self._index, name)
 
+    def sampling(self, samples: int, step: int,
+                 sunit: Optional[TimeUnit] = None) -> 'TimeSeriesSampling':
+        """Get moving samples by desired step along the index .
+
+        Parameters
+        ----------
+        samples : int
+            Number of samples, it must be an integer larger than ``1``.
+        step : int
+            Number of positions or units, which specified by `sunit`, between
+            two samples. Can be positive or negative but not zero. If `step` is
+            set as a positive integer, s, it get samples forward per s
+            positions or units along the index. If `step` is set as a negative
+            integer, -s, it get samples backward per s postions or units along
+            the index.
+        sunit : TimeUnit, optional
+            It is optional. It it is specified, it must be an instance of
+            `TimeUnit` which is a super-unit of or equivalent to the dtype of
+            index.
+
+        Returns
+        -------
+        TimeSeriesSampling
+
+        See Also
+        --------
+        MaskedArray.moving_sampling, TimeIndex.sampling, TimeSeriesSampling.
+
+        Examples
+        --------
+        >>> dates = (['2021-11-01', '2021-11-03', '2021-11-06', '2021-11-10',
+                      '2021-11-13', '2021-11-15', '2021-11-18', '2021-11-22',
+                      '2021-11-25', '2021-11-27', '2021-11-30', '2021-12-03'])
+        >>> data = MaskedArray(np.arange(12))
+        >>> tseries = TimeSeries(data, dates, 'ts')
+
+        1A. positive `step` and no specified `sunit`:
+
+        >>> tseries.sampling(2, 3)
+        2021-11-01:	2021-11-01	0
+                    2021-11-10	3
+        2021-11-03:	2021-11-03	1
+                    2021-11-13	4
+        2021-11-06:	2021-11-06	2
+                    2021-11-15	5
+        2021-11-10:	2021-11-10	3
+                    2021-11-18	6
+        2021-11-13:	2021-11-13	4
+                    2021-11-22	7
+        2021-11-15:	2021-11-15	5
+                    2021-11-25	8
+        2021-11-18:	2021-11-18	6
+                    2021-11-27	9
+        2021-11-22:	2021-11-22	7
+                    2021-11-30	10
+        2021-11-25:	2021-11-25	8
+                    2021-12-03	11
+        2021-11-27:	2021-11-27	9
+        2021-11-30:	2021-11-30	10
+        2021-12-03:	2021-12-03	11
+        Name: ts.sampling(2, 3), dtype: int32
+
+        1B. negative `step` and no specified `sunit`:
+
+        >>> tseries.sampling(2, -3)
+        2021-11-01:	2021-11-01	0
+        2021-11-03:	2021-11-03	1
+        2021-11-06:	2021-11-06	2
+        2021-11-10:	2021-11-01	0
+                    2021-11-10	3
+        2021-11-13:	2021-11-03	1
+                    2021-11-13	4
+        2021-11-15:	2021-11-06	2
+                    2021-11-15	5
+        2021-11-18:	2021-11-10	3
+                    2021-11-18	6
+        2021-11-22:	2021-11-13	4
+                    2021-11-22	7
+        2021-11-25:	2021-11-15	5
+                    2021-11-25	8
+        2021-11-27:	2021-11-18	6
+                    2021-11-27	9
+        2021-11-30:	2021-11-22	7
+                    2021-11-30	10
+        2021-12-03:	2021-11-25	8
+                    2021-12-03	11
+        Name: ts.sampling(2, -3), dtype: int32
+
+        2A. positive `step` and equivalent `sunit`:
+
+        >>> tseries.sampling(2, 3, TimeUnit.DAY)
+        2021-11-01:	2021-11-01	0
+                    2021-11-10	3
+        2021-11-03:	2021-11-03	1
+                    2021-11-13	4
+        2021-11-06:	2021-11-06	2
+                    2021-11-15	5
+        2021-11-10:	2021-11-10	3
+                    2021-11-18	6
+        2021-11-13:	2021-11-13	4
+                    2021-11-22	7
+        2021-11-15:	2021-11-15	5
+                    2021-11-25	8
+        2021-11-18:	2021-11-18	6
+                    2021-11-27	9
+        2021-11-22:	2021-11-22	7
+                    2021-11-30	10
+        2021-11-25:	2021-11-25	8
+                    2021-12-03	11
+        2021-11-27:	2021-11-27	9
+        2021-11-30:	2021-11-30	10
+        2021-12-03:	2021-12-03	11
+        Name: ts.sampling(2, 3, day), dtype: int32
+
+        2B. negative `step` and equivalent `sunit`:
+
+        >>> tseries.sampling(2, -3, TimeUnit.DAY)
+        2021-11-01:	2021-11-01	0
+        2021-11-03:	2021-11-03	1
+        2021-11-06:	2021-11-06	2
+        2021-11-10:	2021-11-01	0
+                    2021-11-10	3
+        2021-11-13:	2021-11-03	1
+                    2021-11-13	4
+        2021-11-15:	2021-11-06	2
+                    2021-11-15	5
+        2021-11-18:	2021-11-10	3
+                    2021-11-18	6
+        2021-11-22:	2021-11-13	4
+                    2021-11-22	7
+        2021-11-25:	2021-11-15	5
+                    2021-11-25	8
+        2021-11-27:	2021-11-18	6
+                    2021-11-27	9
+        2021-11-30:	2021-11-22	7
+                    2021-11-30	10
+        2021-12-03:	2021-11-25	8
+                    2021-12-03	11
+        Name: ts.sampling(2, -3, day), dtype: int32
+
+        3A. positive `step` and super-unit `sunit`:
+
+        >>> tseries.sampling(2, 3, TimeUnit.WEEK)
+        2021-11-01:	2021-11-01	0
+                    2021-11-22	7
+        2021-11-03:	2021-11-03	1
+                    2021-11-22	7
+        2021-11-06:	2021-11-06	2
+                    2021-11-22	7
+        2021-11-10:	2021-11-10	3
+                    2021-11-30	10
+        2021-11-13:	2021-11-13	4
+                    2021-11-30	10
+        2021-11-15:	2021-11-15	5
+        2021-11-18:	2021-11-18	6
+        2021-11-22:	2021-11-22	7
+        2021-11-25:	2021-11-25	8
+        2021-11-27:	2021-11-27	9
+        2021-11-30:	2021-11-30	10
+        2021-12-03:	2021-12-03	11
+        Name: ts.sampling(2, 3, week), dtype: int32
+
+        3B. negative `step` and super-unit `sunit`:
+
+        >>> tseries.sampling(2, -3, TimeUnit.WEEK)
+        2021-11-01:	2021-11-01	0
+        2021-11-03:	2021-11-03	1
+        2021-11-06:	2021-11-06	2
+        2021-11-10:	2021-11-10	3
+        2021-11-13:	2021-11-13	4
+        2021-11-15:	2021-11-15	5
+        2021-11-18:	2021-11-18	6
+        2021-11-22:	2021-11-06	2
+                    2021-11-22	7
+        2021-11-25:	2021-11-06	2
+                    2021-11-25	8
+        2021-11-27:	2021-11-06	2
+                    2021-11-27	9
+        2021-11-30:	2021-11-13	4
+                    2021-11-30	10
+        2021-12-03:	2021-11-13	4
+                    2021-12-03	11
+        Name: ts.sampling(2, -3, week), dtype: int32
+
+        4. sub-unit `sunit`:
+
+        >>> tseries.sampling(2, 1, TimeUnit.HOUR)
+        ValueError: not support sampling 'TimeUnit.HOUR' on 'datetime64[D]' datetimes
+
+        5A. non-integer `samples`:
+
+        >>> tseries.sampling(2., 1)
+        TypeError: 'samples' must be 'int' not 'float'
+
+        5B. invalid `samples`:
+
+        >>> tseries.sampling(1, 1)
+        ValueError: 'samples' must be larger than 1
+
+        >>> tseries.sampling(0, 1)
+        ValueError: 'samples' must be larger than 1
+
+        >>> tseries.sampling(-1, 1)
+        ValueError: 'samples' must be larger than 1
+
+        6A. non-integer `step`:
+
+        >>> tseries.sampling(2, 1.)
+        TypeError: 'step' must be 'int' not 'float'
+
+        6B. zero `step`:
+
+        >>> tseries.sampling(2, 0)
+        ValueError: 'step' must be non-zero
+
+        7. invalid `sunit`:
+
+        >>> tseries.sampling(2, 1, 'day')
+        TypeError: 'sunit' must be 'TimeUnit' not 'str'
+
+        """
+        index = self._index
+        data = index.sampling(self._data, samples, step, sunit)
+        indices = index.sampling(MaskedArray(index.values),
+                                 samples, step, sunit)
+        if sunit is None:
+            name = f'{self._name}.sampling({samples}, {step})'
+        else:
+            name = f'{self._name}.sampling({samples}, {step}, {sunit.name})'
+        return TimeSeriesSampling(data, indices, index, name)
+
     @classmethod
     def _make(cls, data: MaskedArray, index: TimeIndex, name: str
               ) -> 'TimeSeries':
@@ -1133,3 +1368,232 @@ class NumericTimeSeries(TimeSeries):
     def __le__(self, other: Union['NumericTimeSeries', float, int]
                ) -> BooleanTimeSeries:
         return self._comparison_op(other, ComparisonOperator.LE)
+
+
+class TimeSeriesSampling:
+    """Moving Samples of time-series.
+
+    Parameters
+    ----------
+    data : MaskedArray (2-dimensional)
+        The data stored in the object. It must be an instance of `MaskedArray`
+        with two dimensions, in which the 1st dimension is equal to the length
+        of `index` and the 2nd dimension is the number of samples.
+    indices : MaskedArray (2-dimensional)
+        The datetimes corresponding to each element in `data`. It has the same
+        shape of `data` and its data-type is `numpy.datetime64`.
+    index : TimeIndex
+        The datetime values indexing `data`.
+    name : str
+        The name given to the object.
+
+    Notes
+    -----
+    It is used as the result of `sampling` of `TimeSeries`, so ignore
+    unnecessary checks.
+
+    Methods
+    -------
+    to_pandas : pandas.DataFrame
+        Return a copy of the object as a pandas DataFrame, in which the
+        value of N/A elements are replaced with ``numpy.nan``.
+    to_dict : Dict[datetime.date, TimeSeries]
+        Return a copy of the object as a dict from datetime to time-series.
+
+    Examples
+    --------
+    >>> index = np.array(['1970-01-01', '1970-01-02', '1970-01-03',
+                          '1970-01-04', '1970-01-05', '1970-01-06',
+                          '1970-01-07', '1970-01-08'], 'datetime64')
+    >>> data = np.array([0, 1, 2, 3, 4, 5, 6, 7])
+    >>> TimeSeries(data, index, 'ts').sampling(3, 2)
+    1970-01-01:	1970-01-01	0
+                1970-01-03	2
+                1970-01-05	4
+    1970-01-02:	1970-01-02	1
+                1970-01-04	3
+                1970-01-06	5
+    1970-01-03:	1970-01-03	2
+                1970-01-05	4
+                1970-01-07	6
+    1970-01-04:	1970-01-04	3
+                1970-01-06	5
+                1970-01-08	7
+    1970-01-05:	1970-01-05	4
+                1970-01-07	6
+    1970-01-06:	1970-01-06	5
+                1970-01-08	7
+    1970-01-07:	1970-01-07	6
+    1970-01-08:	1970-01-08	7
+    Name: ts.sampling(3, 2), dtype: int32
+
+    >>> TimeSeries(data, index, 'ts').sampling(3, -2)
+    1970-01-01:	1970-01-01	0
+    1970-01-02:	1970-01-02	1
+    1970-01-03:	1970-01-01	0
+                1970-01-03	2
+    1970-01-04:	1970-01-02	1
+                1970-01-04	3
+    1970-01-05:	1970-01-01	0
+                1970-01-03	2
+                1970-01-05	4
+    1970-01-06:	1970-01-02	1
+                1970-01-04	3
+                1970-01-06	5
+    1970-01-07:	1970-01-03	2
+                1970-01-05	4
+                1970-01-07	6
+    1970-01-08:	1970-01-04	3
+                1970-01-06	5
+                1970-01-08	7
+    Name: ts.sampling(3, -2), dtype: int32
+
+    """
+    def __init__(self, data: MaskedArray, indices: MaskedArray,
+                 index: TimeIndex, name: str):
+        self._data = data
+        self._indices = indices
+        self._index = index
+        self._name = name
+
+    def to_pandas(self) -> pd.DataFrame:
+        """Return a copy of the object as pandas dataframe.
+
+        Returns
+        -------
+        pandas.DataFrame
+            A copy of the object as a `pandas.DataFrame`, in which the
+            value of N/A elements are replaced with ``numpy.nan``.
+
+        See also
+        --------
+        MaskedArray.to_numpy
+
+        Examples
+        --------
+        >>> index = np.array(['1970-01-01', '1970-01-02', '1970-01-03',
+                              '1970-01-04', '1970-01-05', '1970-01-06',
+                              '1970-01-07', '1970-01-08'], 'datetime64')
+        >>> data = np.array([0, 1, 2, 3, 4, 5, 6, 7])
+        >>> TimeSeries(data, index, 'ts').sampling(2, 3).to_pandas()
+                    ts.sampling(2, 3)[0]  ts.sampling(2, 3)[1]
+        1970-01-01                   0.0                   3.0
+        1970-01-02                   1.0                   4.0
+        1970-01-03                   2.0                   5.0
+        1970-01-04                   3.0                   6.0
+        1970-01-05                   4.0                   7.0
+        1970-01-06                   5.0                   NaN
+        1970-01-07                   6.0                   NaN
+        1970-01-08                   7.0                   NaN
+
+        >>> TimeSeries(data, index, 'ts').sampling(2, -3).to_pandas()
+                    ts.sampling(2, -3)[-1]  ts.sampling(2, -3)[0]
+        1970-01-01                     NaN                    0.0
+        1970-01-02                     NaN                    1.0
+        1970-01-03                     NaN                    2.0
+        1970-01-04                     0.0                    3.0
+        1970-01-05                     1.0                    4.0
+        1970-01-06                     2.0                    5.0
+        1970-01-07                     3.0                    6.0
+        1970-01-08                     4.0                    7.0
+
+        """
+        values = self._data.to_numpy()
+        index = self._index.values
+        if np.array_equal(index, self._indices.data[:, 0]):
+            columns = [f'{self._name}[{v}]' for v in range(values.shape[1])]
+        else:
+            columns = [f'{self._name}[{v}]'
+                       for v in range(-values.shape[1] + 1, 1)]
+        return pd.DataFrame(values, index=index, columns=columns)
+
+    def to_dict(self) -> Dict[datetime.date, TimeSeries]:
+        """Return a copy of the object as dict of time-series.
+
+        Returns
+        -------
+        dict
+
+        Examples
+        --------
+        >>> index = np.array(['1970-01-01', '1970-01-02', '1970-01-03',
+                              '1970-01-04', '1970-01-05', '1970-01-06',
+                              '1970-01-07', '1970-01-08'], 'datetime64')
+        >>> data = np.array([0, 1, 2, 3, 4, 5, 6, 7])
+        >>> TimeSeries(data, index, 'ts').sampling(3, 2).to_dict()
+        {datetime.date(1970, 1, 1): 1970-01-01	0
+         1970-01-03	2
+         1970-01-05	4
+         Name: ts.sampling(3, 2)[1970-01-01], dtype: int32,
+         datetime.date(1970, 1, 2): 1970-01-02	1
+         1970-01-04	3
+         1970-01-06	5
+         Name: ts.sampling(3, 2)[1970-01-02], dtype: int32,
+         datetime.date(1970, 1, 3): 1970-01-03	2
+         1970-01-05	4
+         1970-01-07	6
+         Name: ts.sampling(3, 2)[1970-01-03], dtype: int32,
+         datetime.date(1970, 1, 4): 1970-01-04	3
+         1970-01-06	5
+         1970-01-08	7
+         Name: ts.sampling(3, 2)[1970-01-04], dtype: int32,
+         datetime.date(1970, 1, 5): 1970-01-05	4
+         1970-01-07	6
+         Name: ts.sampling(3, 2)[1970-01-05], dtype: int32,
+         datetime.date(1970, 1, 6): 1970-01-06	5
+         1970-01-08	7
+         Name: ts.sampling(3, 2)[1970-01-06], dtype: int32,
+         datetime.date(1970, 1, 7): 1970-01-07	6
+         Name: ts.sampling(3, 2)[1970-01-07], dtype: int32,
+         datetime.date(1970, 1, 8): 1970-01-08	7
+         Name: ts.sampling(3, 2)[1970-01-08], dtype: int32}
+
+        >>> TimeSeries(data, index, 'ts').sampling(3, -2).to_dict()
+        {datetime.date(1970, 1, 1): 1970-01-01	0
+         Name: ts.sampling(3, -2)[1970-01-01], dtype: int32,
+         datetime.date(1970, 1, 2): 1970-01-02	1
+         Name: ts.sampling(3, -2)[1970-01-02], dtype: int32,
+         datetime.date(1970, 1, 3): 1970-01-01	0
+         1970-01-03	2
+         Name: ts.sampling(3, -2)[1970-01-03], dtype: int32,
+         datetime.date(1970, 1, 4): 1970-01-02	1
+         1970-01-04	3
+         Name: ts.sampling(3, -2)[1970-01-04], dtype: int32,
+         datetime.date(1970, 1, 5): 1970-01-01	0
+         1970-01-03	2
+         1970-01-05	4
+         Name: ts.sampling(3, -2)[1970-01-05], dtype: int32,
+         datetime.date(1970, 1, 6): 1970-01-02	1
+         1970-01-04	3
+         1970-01-06	5
+         Name: ts.sampling(3, -2)[1970-01-06], dtype: int32,
+         datetime.date(1970, 1, 7): 1970-01-03	2
+         1970-01-05	4
+         1970-01-07	6
+         Name: ts.sampling(3, -2)[1970-01-07], dtype: int32,
+         datetime.date(1970, 1, 8): 1970-01-04	3
+         1970-01-06	5
+         1970-01-08	7
+         Name: ts.sampling(3, -2)[1970-01-08], dtype: int32}
+
+        """
+        ret = {}
+        for idx, date in enumerate(self._index.values.tolist()):
+            values = self._data[idx]
+            index = self._indices[idx]
+            available = ~index.isna()
+            name = f'{self._name}[{date}]'
+            ret[date] = TimeSeries(values[available], index[available].data,
+                                   name, sort=False)
+        return ret
+
+    def __repr__(self):
+        recv = self.to_dict()
+        ret = []
+        for date, ts_ in recv.items():
+            title = str(date)
+            sep = '\n' + ' ' * (len(title) + 2)
+            ts_ = sep.join(str(ts_).split('\n')[:-1])
+            ret.append(f'{title}:\t{ts_}')
+        ret = '\n'.join(ret) + f'\nName: {self._name}, dtype: {self._data.dtype}'
+        return ret
