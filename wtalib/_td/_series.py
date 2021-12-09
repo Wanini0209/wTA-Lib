@@ -101,7 +101,7 @@ class TimeSeries:
         fill it by the next available element.
     dropna : TimeSeries
         Remove N/A elements.
-    shift :
+    shift : TimeSeries
         Shift index by desired number of periods with given time-unit.
     sampling : TimeSeriesSampling
         Get moving samples along the index by desired step.

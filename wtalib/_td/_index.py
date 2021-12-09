@@ -127,8 +127,6 @@ class TimeIndex:
         `numpy.datetime64`.
     sort : bool
         If ``True``, sort `data`; otherwise do not. Default is ``True``.
-    shift : MaskedArray
-        Shift values equivalent to the time-index shifted by desired period.
 
     Notes
     -----
@@ -155,6 +153,8 @@ class TimeIndex:
         Determine if two time-index are equal.
     argsort: numpy.array
         Return the indices that would sort the time-index.
+    shift : MaskedArray
+        Shift values equivalent to the time-index shifted by desired period.
     sampling : MaskedArray
         Get moving samples of values along the time-index by desired step.
 
